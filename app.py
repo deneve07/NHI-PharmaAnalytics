@@ -630,7 +630,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 # Streamlit 主畫面（單一分析功能：廠商分析，不需選擇分析功能）
 # ============================================================
 
-st.title("📊 健保資料庫分析系統")
+st.title("📊 健保資料庫分析工具")
 st.caption("先選擇成分，接著把需要的欄位拖到「報表欄位」，即時預覽會隨著您的設定更新，效果如同 Excel 樞紐分析。")
 
 df_raw = load_data(DATA_FILE)
@@ -641,11 +641,46 @@ elif "成分" not in df_raw.columns:
     st.error(f"資料檔案缺少「成分」欄位，實際欄位為：{list(df_raw.columns)}")
 else:
     comp_options = sorted([c for c in df_raw["成分"].dropna().unique() if c])
-    comps_selected = st.multiselect(
-        "第1步：輸入關鍵字並選擇成分",
-        options=comp_options, key="comps_select",
-        placeholder="輸入關鍵字，例如 Levofloxacin",
+
+    if "comps_selected_persist" not in st.session_state:
+        st.session_state["comps_selected_persist"] = []
+
+    # 搜尋關鍵字用獨立的 text_input 元件保存，不會因為在下方勾選/取消勾選成分而被清空，
+    # 這樣選了一項之後，下拉式清單仍會停留在同一組關鍵字的搜尋結果，不必重新輸入
+    search_kw = st.text_input(
+        "第1步：輸入關鍵字搜尋成分",
+        key="comp_search_kw",
+        placeholder="輸入關鍵字，例如 Ezetimibe",
     )
+
+    if search_kw.strip():
+        kw = search_kw.strip().lower()
+
+        def _relevance_rank(name):
+            n = name.lower()
+            if n == kw:
+                return 0
+            if n.startswith(kw):
+                return 1
+            return 2
+
+        filtered_options = [c for c in comp_options if kw in c.lower()]
+        filtered_options.sort(key=lambda c: (_relevance_rank(c), c.lower()))
+    else:
+        filtered_options = []
+
+    persisted_selected = [c for c in st.session_state["comps_selected_persist"] if c in comp_options]
+    # 合併「搜尋結果」與「目前已勾選項目」並去重，確保已勾選成分不會因為搜尋字變動而從清單消失，
+    # 也避免同一個成分同時出現在兩邊來源時被重複列出
+    combined_options = list(dict.fromkeys(filtered_options + persisted_selected))
+
+    comps_selected = st.multiselect(
+        "第2步：勾選成分品項 (可多選)",
+        options=combined_options,
+        default=persisted_selected,
+        key="comps_select_widget",
+    )
+    st.session_state["comps_selected_persist"] = comps_selected
 
     if not comps_selected:
         st.info("請先選擇至少一個成分，才會顯示後續的欄位設定。")
@@ -657,8 +692,11 @@ else:
 
         dnd_key = f"dnd_{'_'.join(sorted(comps_selected))}"
         state_key = f"pivot_state_{dnd_key}"
+        DEFAULT_SELECTED_FIELDS = ["成分", "劑型", "劑量", "廠商"]
         if state_key not in st.session_state:
-            st.session_state[state_key] = {"available": FIXED_FIELDS.copy(), "selected": []}
+            default_selected = [c for c in DEFAULT_SELECTED_FIELDS if c in FIXED_FIELDS]
+            default_available = [c for c in FIXED_FIELDS if c not in default_selected]
+            st.session_state[state_key] = {"available": default_available, "selected": default_selected}
         else:
             prev = st.session_state[state_key]
             avail = [c for c in prev["available"] if c in FIXED_FIELDS]
@@ -771,9 +809,10 @@ else:
 
             qty_years_avail = sorted(set(c[:4] for c in value_cols if "申報量" in c))
             has_qty = len(qty_years_avail) > 0
+            default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail]
             pct_years = st.multiselect(
                 "➕ 加入年度占比(%) (可只選需要的年份)",
-                options=qty_years_avail, default=[], disabled=not has_qty, key=f"pct_{dnd_key}",
+                options=qty_years_avail, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
             )
             add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, disabled=not has_qty, key=f"growth_{dnd_key}")
 
@@ -783,9 +822,19 @@ else:
                     filename_parts.append("_".join(filters[col]))
             filename_parts.append("廠商申報量排名")
             report_title = "、".join(comps_selected) + "廠商申報量排名"
-            safe_filename = re.sub(r'[\\/*?:"<>|]', "_", "_".join(filename_parts))
-            if len(safe_filename.encode("utf-8")) > 150:
-                safe_filename = safe_filename.encode("utf-8")[:150].decode("utf-8", "ignore") + "..."
+
+            raw_filename = re.sub(r'[\\/*?:"<>|]', "_", "_".join(filename_parts))
+            MAX_FILENAME_BYTES = 200  # 留安全餘裕，避免超過檔案系統上限 (通常 255 bytes)，
+            # 也避免選太多成分/篩選條件時檔名過長導致下載失敗
+            ext_reserve = 5  # 保留給 ".xlsx" / ".png" 副檔名的空間
+            if len(raw_filename.encode("utf-8")) + ext_reserve <= MAX_FILENAME_BYTES:
+                safe_filename = raw_filename
+            else:
+                budget = MAX_FILENAME_BYTES - ext_reserve - 3  # 預留「...」空間
+                truncated = raw_filename
+                while len(truncated.encode("utf-8")) > budget and len(truncated) > 0:
+                    truncated = truncated[:-1]
+                safe_filename = truncated + "..."
 
             st.divider()
 
