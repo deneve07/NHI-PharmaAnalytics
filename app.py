@@ -381,6 +381,10 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
         .report-title {{
             color: #000000 !important; text-align: center; font-family: {FONT_FAMILY};
             font-weight: bold; margin-top: 5px; margin-bottom: 20px;
+            white-space: normal; word-break: break-word; overflow-wrap: break-word;
+            /* 讓標題不要撐大外層容器的寬度：容器寬度由表格(max-content)決定，
+               標題本身用 width:0; min-width:100% 的技巧強制在容器現有寬度內換行 */
+            display: block; width: 0; min-width: 100%; box-sizing: border-box;
         }}
         .report-footer {{
             display: flex; flex-wrap: wrap; justify-content: space-between;
@@ -414,7 +418,7 @@ CAPTURE_HTML_TEMPLATE = """
         if (document.fonts && document.fonts.ready) {{ await document.fonts.ready; }}
         if (typeof html2canvas === 'undefined') {{ throw new Error('html2canvas 尚未載入完成，請確認網路連線後再試一次'); }}
         return await html2canvas(target, {{
-            scale: 4, backgroundColor: '#ffffff',
+            scale: 2, backgroundColor: '#ffffff',
             windowWidth: target.scrollWidth, windowHeight: target.scrollHeight,
             width: target.scrollWidth, height: target.scrollHeight, useCORS: true
         }});
@@ -526,6 +530,9 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
     ws.print_options.horizontalCentered = True
     ws.page_setup.scaleWithDoc = True
     ws.page_setup.alignWithMargins = True
+    # 沒有這一行，Excel 會忽略 fitToWidth/fitToHeight，直接照 100% 實際大小分頁，
+    # 導致欄位很多時被切成好幾頁 —— 必須明確開啟 fitToPage 才會套用「調整為 1 頁寬」
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
     ws.page_margins.top = 2.7 / 2.54
     ws.page_margins.bottom = 2.5 / 2.54
