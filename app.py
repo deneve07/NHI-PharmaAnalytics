@@ -630,7 +630,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 # Streamlit 主畫面（單一分析功能：廠商分析，不需選擇分析功能）
 # ============================================================
 
-st.title("📊 藥品資料庫分析系統（拖曳版）")
+st.title("📊 健保資料庫分析系統")
 st.caption("先選擇成分，接著把需要的欄位拖到「報表欄位」，即時預覽會隨著您的設定更新，效果如同 Excel 樞紐分析。")
 
 df_raw = load_data(DATA_FILE)
@@ -642,7 +642,7 @@ elif "成分" not in df_raw.columns:
 else:
     comp_options = sorted([c for c in df_raw["成分"].dropna().unique() if c])
     comps_selected = st.multiselect(
-        "第1步：輸入關鍵字並選擇成分品項 (必選)",
+        "第1步：輸入關鍵字並選擇成分",
         options=comp_options, key="comps_select",
         placeholder="輸入關鍵字，例如 Levofloxacin",
     )
