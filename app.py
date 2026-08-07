@@ -48,7 +48,7 @@ except ImportError:
 # 基礎設定與資料載入
 # ============================================================
 
-st.set_page_config(page_title="藥品資料庫分析系統", page_icon="📊", layout="wide")
+st.set_page_config(page_title="健保資料庫分析系統", page_icon="📊", layout="wide")
 
 DATA_FILE = "data2023-2026.csv"
 
