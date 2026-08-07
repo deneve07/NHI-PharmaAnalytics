@@ -829,12 +829,19 @@ else:
             )
             add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, disabled=not has_qty, key=f"growth_{dnd_key}")
 
-            filename_parts = list(comps_selected)
+            # 標題與檔名都要反映「篩選了哪些欄位」：成分一定顯示；其餘欄位（劑型/劑量/規格/廠商）
+            # 只有在使用者有實際篩選時才附加上去，沒特別篩選的欄位就不出現在標題/檔名裡
+            filter_desc_parts_for_filename = []
+            filter_desc_parts_for_title = []
             for col in row_fields:
-                if col in filters:
-                    filename_parts.append("_".join(filters[col]))
-            filename_parts.append("廠商申報量排名")
-            report_title = "、".join(comps_selected) + "廠商申報量排名"
+                if col == "成分":
+                    continue
+                if col in filters and filters[col]:
+                    filter_desc_parts_for_filename.append("_".join(filters[col]))
+                    filter_desc_parts_for_title.append("、".join(filters[col]))
+
+            filename_parts = list(comps_selected) + filter_desc_parts_for_filename + ["廠商申報量排名"]
+            report_title = "、".join(comps_selected) + "".join(filter_desc_parts_for_title) + "廠商申報量排名"
 
             raw_filename = re.sub(r'[\\/*?:"<>|]', "_", "_".join(filename_parts))
             MAX_FILENAME_BYTES = 200  # 留安全餘裕，避免超過檔案系統上限 (通常 255 bytes)，
