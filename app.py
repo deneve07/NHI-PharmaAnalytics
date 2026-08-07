@@ -195,17 +195,13 @@ def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list,
     if temp_sort_cols:
         df_sorted = df_sorted.drop(columns=temp_sort_cols)
 
-    if subtotal_fields:
-        min_level_idx = min(row_fields.index(c) for c in subtotal_fields)
-    else:
-        min_level_idx = len(row_fields)
-
-    group_cols_to_blank = []
-    for c in row_fields:
-        if c in subtotal_fields:
-            continue
-        if df[c].nunique() <= 1 or row_fields.index(c) < min_level_idx:
-            group_cols_to_blank.append(c)
+    # 「省略重複值」規則（類似 Excel 樞紐分析表的大綱模式）：
+    # 由左到右依序比較每一欄，只要目前這一欄的值與上一列相同、且左邊所有欄位也都跟上一列相同
+    # （代表仍在同一個群組內），就把這一欄留白；只要有一欄改變了，從那一欄開始（含）到最右邊都要照常顯示，
+    # 不能因為剛好文字相同就被誤判成同一群組而被省略。
+    # 這一段取代舊版只針對「主要分組欄位」或「全表僅有一種值」才省略重複的作法，
+    # 讓「劑型」「規格」這類欄位在同一組內重複出現時，也能正確被省略，不會重複印出。
+    _MISSING = object()
 
     rows = []
     last_vals = {}
@@ -213,17 +209,22 @@ def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list,
 
     def emit_row(row, top_totals):
         rec_vals = {}
+        prefix_broken = False
         for f in row_fields:
             val = row[f]
-            show = val
-            if f in group_cols_to_blank:
-                if val != last_vals.get(f):
-                    last_vals[f] = val
+            if f in subtotal_fields:
+                if first_flags[f]:
+                    show = val
+                    prefix_broken = True  # 新的合計群組開始，之後的欄位一律照常顯示
                 else:
                     show = ""
-            elif f in first_flags:
-                if not first_flags[f]:
+            else:
+                if (not prefix_broken) and val == last_vals.get(f, _MISSING):
                     show = ""
+                else:
+                    show = val
+                    prefix_broken = True
+            last_vals[f] = val
             rec_vals[f] = show
         sums = {c: row[c] for c in value_cols}
         sums.update(compute_extra_for_row(sums, top_totals))
@@ -581,15 +582,20 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
     for r in rows:
         row_vals = []
         for f in row_fields:
-            row_vals.append(r["values"].get(f, ""))
+            # 空字串必須寫成 None，而不是 ""：openpyxl 對空字串會產生
+            # <c t="inlineStr"></c>（宣告是字串型別卻沒有 <is> 內容），
+            # 這是不合法的 OOXML，Excel 開啟時就會跳出「部分內容有問題」的修復提示，
+            # 且修復過程中可能連帶把頁首/頁尾等設定一併清掉。寫 None 則完全不產生該儲存格，才是合法的空白儲存格。
+            val = r["values"].get(f, "")
+            row_vals.append(val if val != "" else None)
         for c in display_cols:
             if c in extra_cols:
                 v, ok = safe_numeric(r["sums"].get(c, 0))
-                row_vals.append(v if ok else str(v))
+                row_vals.append(v if ok else (str(v) if v != "" else None))
             else:
                 raw = r["sums"].get(c, "")
                 if raw == "":
-                    row_vals.append("")
+                    row_vals.append(None)
                 else:
                     v, ok = safe_numeric(raw)
                     row_vals.append(v if ok else str(v))
