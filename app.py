@@ -868,7 +868,7 @@ else:
             default_qty_options = list(QTY_COL_MAP.values())
             qty_label_map = {c: qty_display_label(c) for c in qty_options}
             qty_label_to_internal = {v: k for k, v in qty_label_map.items()}
-            with st.expander("🔧 如需排除年度請展開勾選 (預設全選實際年度數量)", expanded=False):
+            with st.expander("🔧 選擇要加總的數值欄位 (含 2026年推估數量，預設全選實際年度數量)", expanded=True):
                 sel_v = st.multiselect(
                     "選擇要加總的數值欄位", options=qty_options, default=default_qty_options,
                     format_func=lambda c: qty_label_map.get(c, c), key=f"vals_{dnd_key}",
