@@ -1,5 +1,5 @@
 """
-藥品資料庫分析系統 (Streamlit 拖曳版 - 廠商分析)
+健保資料庫分析系統 (Streamlit 拖曳版 - 廠商分析)
 ----------------------------------------------
 沿用「華典streamlit-0731」的拖曳樞紐分析引擎（streamlit-sortables），
 但僅開放「成分、劑型、劑量、規格、廠商」五個欄位供拖曳排列，
@@ -933,7 +933,11 @@ else:
                 y2d = f"{y2}年(1-5月)" if y2 == "2026" else f"{y2}年"
                 return f"{y1d} → {y2d}"
 
-            growth_pair_options = list(zip(qty_years_avail, qty_years_avail[1:]))
+            # 「2025年→2026年(1-5月)」這組實際成長率會拿全年資料跟只有1-5月的資料相比，
+            # 容易誤導，所以不提供這個選項；若要看2025→2026的成長，請改看「2025→2026年推估」
+            growth_pair_options = [
+                (y1, y2) for y1, y2 in zip(qty_years_avail, qty_years_avail[1:]) if y2 != "2026"
+            ]
             if add_est:
                 growth_pair_options = growth_pair_options + [EST_GROWTH_PAIR]
             growth_pairs = []
