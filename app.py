@@ -188,14 +188,14 @@ def pretty_header(col: str):
     if col == "2026年占比(%)":
         return ["2026年", "(1-5月)", "占比(%)"]
     if col == EST_PCT_COL:
-        return ["2026年推估", "占比(%)"]
+        return ["2026年", "推估占比(%)"]
     m = re.match(r"^(\d{4})年占比\(%\)$", col)
     if m:
         y = m.group(1)
         return [f"{y}年", "占比(%)"]
 
     if col == EST_GROWTH_COL:
-        return ["2025-2026年推估", "成長率(%)"]
+        return ["2025-2026年", "推估成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
@@ -676,15 +676,20 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
     ws.page_margins.header = 1.5 / 2.54
     ws.page_margins.footer = 1.0 / 2.54
 
-    ws.oddHeader.center.text = f'&"微軟正黑體,Bold"&16{report_title}'
-    ws.oddFooter.left.text = '&"微軟正黑體,Regular"&12中央健康保險署  政府資料開放平台 2026年資料'
-    ws.oddFooter.right.text = '&"微軟正黑體,Regular"&12https://data.gov.tw/dataset/22131'
+    ws.oddHeader.center.text = f'&"Noto Sans TC,Bold"&16{report_title}'
+    ws.oddFooter.left.text = '&"Noto Sans TC,Regular"&12中央健康保險署  政府資料開放平台 2026年資料'
+    ws.oddFooter.right.text = '&"Noto Sans TC,Regular"&12https://data.gov.tw/dataset/22131'
 
     header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
     subtotal_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
     total_fill = PatternFill(start_color="B8CCE4", end_color="B8CCE4", fill_type="solid")
 
-    font_family = "微軟正黑體"
+    # 字型與網頁預覽(FONT_FAMILY)、標題、頁尾統一使用 Noto Sans TC：
+    # 微軟正黑體在沒有安裝該字型的系統（例如產生 PNG 預覽用的無頭瀏覽器／Excel 開啟環境）
+    # 會對英文字母/數字這類非中文字元退回系統預設字型（如 Times New Roman），
+    # 導致英文數字跟中文標題看起來像兩種字型；Noto Sans TC 對拉丁字母與數字也有完整設計，
+    # 才能讓英文、數字跟標題、頁尾維持同一種字型風格。
+    font_family = "Noto Sans TC"
     header_font = Font(name=font_family, size=12, bold=True, color="FFFFFF")
     data_font = Font(name=font_family, size=12)
     bold_font = Font(name=font_family, size=12, bold=True)
