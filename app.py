@@ -407,7 +407,12 @@ def safe_numeric(v):
 # #DCE6F1 小計、#B8CCE4 總計）
 # ============================================================
 
-FONT_FAMILY = "'微軟正黑體', 'Microsoft JhengHei', sans-serif"
+# 字型统一使用同一組字型堆疊：優先用微軟正黑體/Microsoft JhengHei（如果使用者電腦有安裝），
+# 否則退回到用 <link> 額外載入的 Noto Sans TC（Google Fonts，一定會被載入成功，中文、數字、英文
+# 都涵蓋在內），最後才是瀏覽器預設的 sans-serif。這樣不管在哪台裝置匯出 PNG，標題、表頭、
+# 數字、頁尾都會套用同一套字型，不會因為某些機器沒裝微軟正黑體，數字被瀏覽器換成預設的
+# serif 字型（例如 Times New Roman），造成畫面上字型不統一。
+FONT_FAMILY = "'微軟正黑體', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif"
 HEADER_COLOR = "#1F497D"
 SUBTOTAL_COLOR = "#DCE6F1"
 TOTAL_COLOR = "#B8CCE4"
