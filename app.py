@@ -71,6 +71,13 @@ QTY_DISPLAY_LABEL = {
 }
 BLANK_TOKENS = {"nan", "none", "<na>", "null", ""}
 
+# 2026 年推估全年數量（以 1-5 月數據 ÷5×12 估算），以及對應的推估占比／推估成長率欄位。
+# 這三個欄位不是原始 CSV 資料，是從「2026年申報量」衍生出來的，所以獨立用常數命名，
+# 不放進 QTY_COL_MAP（那是給「讀取 CSV 原始欄位」用的），避免使用者在第4步選數值欄位時誤選到它。
+EST_QTY_COL = "2026年推估申報量"
+EST_PCT_COL = "2026推估占比(%)"
+EST_GROWTH_COL = "2025-2026推估成長率(%)"
+
 
 @st.cache_data(show_spinner=False)
 def load_data(path: str) -> pd.DataFrame:
@@ -101,6 +108,11 @@ def load_data(path: str) -> pd.DataFrame:
         cleaned = df[raw_col].astype(str).str.replace(",", "", regex=False).str.strip()
         df[internal_col] = pd.to_numeric(cleaned, errors="coerce").fillna(0)
 
+    # 2026 年推估全年數量：用 1-5 月數量 ÷5×12 估算。先在這裡逐列算好，
+    # 之後不管怎麼篩選/分組加總，用一般的加總邏輯就能得到正確的推估總量
+    # （因為「先加總再乘」跟「先乘再加總」對於固定倍率而言結果相同）。
+    df[EST_QTY_COL] = df["2026年申報量"] * 12 / 5
+
     return df
 
 
@@ -117,24 +129,34 @@ def order_display_cols(value_cols, pct_cols, growth_cols):
 
 
 def pretty_header(col: str):
-    """把內部欄名轉成 (年份標籤, 欄位標籤) 供標題換行顯示；2026 年一律標示 (1-5月)"""
+    """把內部欄名轉成「多行標題」的字串清單（2或3行），呼叫端自行用 <br>（HTML）或 \\n（Excel）組合。
+    2026年(1-5月)的數量/占比改成三行顯示；成長率欄位一律移除「年」字。"""
+    if col == "2026年申報量":
+        return ["2026年", "(1-5月)", "數量"]
+    if col == EST_QTY_COL:
+        return ["2026年", "推估數量"]
     if col in QTY_DISPLAY_LABEL:
-        return QTY_DISPLAY_LABEL[col]
+        return list(QTY_DISPLAY_LABEL[col])
 
+    if col == "2026年占比(%)":
+        return ["2026年", "(1-5月)", "占比(%)"]
+    if col == EST_PCT_COL:
+        return ["2026", "推估占比(%)"]
     m = re.match(r"^(\d{4})年占比\(%\)$", col)
     if m:
         y = m.group(1)
-        y_disp = f"{y}年(1-5月)" if y == "2026" else f"{y}年"
-        return y_disp, "占比(%)"
+        return [y, "占比(%)"]
 
+    if col == EST_GROWTH_COL:
+        return ["2025-2026", "推估成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
-        y1d = f"{y1}年(1-5月)" if y1 == "2026" else f"{y1}年"
-        y2d = f"{y2}年(1-5月)" if y2 == "2026" else f"{y2}年"
-        return f"{y1d}-{y2d}", "成長率(%)"
+        y1d = f"{y1}(1-5月)" if y1 == "2026" else y1
+        y2d = f"{y2}(1-5月)" if y2 == "2026" else y2
+        return [f"{y1d}-{y2d}", "成長率(%)"]
 
-    return None, col
+    return [col]
 
 
 # ============================================================
@@ -144,24 +166,45 @@ def pretty_header(col: str):
 # ============================================================
 
 def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list, value_cols: list,
-                       pct_years: list = None, add_growth: bool = False):
+                       pct_years: list = None, growth_pairs: list = None):
     # 先依「報表欄位」的組合彙總數值，確保同一個欄位組合只會出現一列
     df = df.groupby(row_fields, as_index=False)[value_cols].sum()
 
-    qty_cols = [c for c in value_cols if "申報量" in c]
+    # 「2026年推估數量」欄名開頭剛好也是「2026」，但它是獨立的衍生欄位，不能被當成
+    # 「使用者選了真正的2026年(1-5月)數量」來處理年度占比/成長率的自動判斷，
+    # 所以這裡的年度偵測要排除它，只用真正的申報量欄位來決定有哪些「年度」可用。
+    qty_cols = [c for c in value_cols if "申報量" in c and c != EST_QTY_COL]
     qty_years = sorted(set(c[:4] for c in qty_cols))
     pct_years = pct_years or []
+    growth_pairs = growth_pairs or []  # 使用者勾選的年度成長率區間，例如 [("2023","2024"), ("2025","2026")]
 
     pct_cols = [f"{y}年占比(%)" for y in qty_years if y in pct_years]
-    growth_cols = [f"{qty_years[i]}-{qty_years[i+1]}年成長率(%)" for i in range(len(qty_years) - 1)] if add_growth else []
+    all_growth_pairs = [(qty_years[i], qty_years[i + 1]) for i in range(len(qty_years) - 1)]
+    growth_cols = [f"{y1}-{y2}年成長率(%)" for (y1, y2) in all_growth_pairs if (y1, y2) in set(growth_pairs)]
+
+    # 「2026年推估數量」現在跟其他年度數量欄一樣，可以獨立被使用者勾選（不需要同時選「2026年(1-5月)數量」），
+    # 只要它有被選進 value_cols，就自動附上對應的推估占比／推估成長率
+    include_2026_estimate = EST_QTY_COL in value_cols
+    if include_2026_estimate:
+        pct_cols = pct_cols + [EST_PCT_COL]
+        growth_cols = growth_cols + [EST_GROWTH_COL]
 
     def compute_extra_for_row(sums, top_totals):
         extra = {}
         for c in pct_cols:
+            if c == EST_PCT_COL:
+                # 推估占比：直接用「推估數量」自己的加總來算比例，不依賴使用者是否也選了「2026年(1-5月)數量」
+                extra[c] = sums.get(EST_QTY_COL, 0) / top_totals.get(EST_QTY_COL, 0) if top_totals.get(EST_QTY_COL, 0) else 0
+                continue
             y = c[:4]
             base = f"{y}年申報量"
             extra[c] = sums.get(base, 0) / top_totals.get(base, 0) if top_totals.get(base, 0) else 0
         for c in growth_cols:
+            if c == EST_GROWTH_COL:
+                base_2025 = sums.get("2025年申報量", 0)
+                est_val = sums.get(EST_QTY_COL, 0)
+                extra[c] = (est_val - base_2025) / base_2025 if base_2025 else 0
+                continue
             y1, y2 = c[:4], c[5:9]
             b1, b2 = f"{y1}年申報量", f"{y2}年申報量"
             extra[c] = (sums.get(b2, 0) - sums.get(b1, 0)) / sums.get(b1, 0) if sums.get(b1, 0) else 0
@@ -170,12 +213,20 @@ def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list,
     def compute_extra_for_group(totals):
         extra = {c: 1.0 for c in pct_cols}  # 小計/總計列本身佔比恆為 100%
         for c in growth_cols:
+            if c == EST_GROWTH_COL:
+                base_2025 = totals.get("2025年申報量", 0)
+                est_val = totals.get(EST_QTY_COL, 0)
+                extra[c] = (est_val - base_2025) / base_2025 if base_2025 else 0
+                continue
             y1, y2 = c[:4], c[5:9]
             b1, b2 = f"{y1}年申報量", f"{y2}年申報量"
             extra[c] = (totals.get(b2, 0) - totals.get(b1, 0)) / totals.get(b1, 0) if totals.get(b1, 0) else 0
         return extra
 
-    year_cols = sorted(qty_cols, reverse=True)
+    # 排序用的「數量欄」跟上面判斷年度用的 qty_cols 不同：排序要把「2026年推估數量」也算進去，
+    # 這樣即使使用者只選了推估數量、沒選任何實際年度欄位，排名（由大到小）仍然正常運作
+    sort_qty_cols = [c for c in value_cols if "申報量" in c]
+    year_cols = sorted(sort_qty_cols, reverse=True)
 
     sort_cols, sort_asc, temp_sort_cols = [], [], []
     for col in subtotal_fields:
@@ -312,6 +363,14 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
     )
     td_style = f"border:1px solid #D9D9D9;padding:8px 12px;font-family:{FONT_FAMILY};white-space:nowrap;"
 
+    # 同類型欄位（數量／占比／成長率）欄寬要一致，用 min-width 統一設定
+    def col_min_width(c):
+        if c in growth_cols:
+            return "110px"
+        if c in pct_cols:
+            return "95px"
+        return "115px"  # 數量欄
+
     html = [
         "<div class='report-preview-wrapper'><div class='report-container'>",
         f"<h2 class='report-title'>{report_title}</h2>",
@@ -322,11 +381,8 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
     for f in row_fields:
         html.append(f"<th style='{th_style}'>{f}</th>")
     for c in display_cols:
-        year, label = pretty_header(c)
-        if year:
-            html.append(f"<th style='{th_style}'>{year}<br>{label}</th>")
-        else:
-            html.append(f"<th style='{th_style}'>{label}</th>")
+        lines = pretty_header(c)
+        html.append(f"<th style='{th_style}min-width:{col_min_width(c)};'>{'<br>'.join(lines)}</th>")
     html.append("</tr>")
 
     for r in rows:
@@ -565,8 +621,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
     # 標題列
     header_texts = list(row_fields)
     for c in display_cols:
-        year, label = pretty_header(c)
-        header_texts.append(f"{year}\n{label}" if year else label)
+        header_texts.append("\n".join(pretty_header(c)))
     ws.append(header_texts)
     ws.row_dimensions[1].height = 60
     ws.print_title_rows = "1:1"
@@ -622,14 +677,20 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
                 cell.fill = total_fill
         current_row += 1
 
-    for col_idx, col_name in enumerate(headers, 1):
+    # 同類型欄位（數量／占比／成長率）欄寬要一致。
+    # 舊版這裡用 headers[col_idx-1] 跟 "占比(%)"/"成長率(%)" 這種寫死的短字串比對，
+    # 但 headers 存的其實是完整內部欄名（例如 "2025年占比(%)"），字串不可能完全相等，
+    # 所以這個分支形同虛設──改用「這個欄名是否屬於 pct_cols / growth_cols」來正確判斷類別。
+    for col_idx, col_key in enumerate(headers, 1):
         col_letter = get_column_letter(col_idx)
         if col_idx == 1:
             ws.column_dimensions[col_letter].width = 30
         elif col_idx <= len(row_fields):
             ws.column_dimensions[col_letter].width = 18
-        elif headers[col_idx - 1] in ("占比(%)", "成長率(%)"):
+        elif col_key in growth_cols:
             ws.column_dimensions[col_letter].width = 16
+        elif col_key in pct_cols:
+            ws.column_dimensions[col_letter].width = 14
         else:
             ws.column_dimensions[col_letter].width = 18
 
@@ -793,10 +854,24 @@ else:
 
             st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2023~2026年 全部數量)")
 
-            qty_options = list(QTY_COL_MAP.values())
-            with st.expander("🔧 如需排除年度請展開勾選 (預設全選)", expanded=False):
+            # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-5月) 數量」），
+            # 而不是內部使用的原始欄名（例如「2026年申報量」），避免使用者選欄位時對不上結果
+            def qty_display_label(internal_col):
+                if internal_col == EST_QTY_COL:
+                    return "2026年 推估數量"
+                year, label = QTY_DISPLAY_LABEL.get(internal_col, (None, internal_col))
+                return f"{year} {label}" if year else label
+
+            # 「2026年推估數量」現在跟其他年度數量欄位一樣，可以獨立勾選，
+            # 不需要同時勾選「2026年(1-5月)數量」──放在選項清單最後面，預設不勾選（需要使用者自己選用）
+            qty_options = list(QTY_COL_MAP.values()) + [EST_QTY_COL]
+            default_qty_options = list(QTY_COL_MAP.values())
+            qty_label_map = {c: qty_display_label(c) for c in qty_options}
+            qty_label_to_internal = {v: k for k, v in qty_label_map.items()}
+            with st.expander("🔧 如需排除年度請展開勾選 (預設全選實際年度數量)", expanded=False):
                 sel_v = st.multiselect(
-                    "選擇要加總的數值欄位", options=qty_options, default=qty_options, key=f"vals_{dnd_key}",
+                    "選擇要加總的數值欄位", options=qty_options, default=default_qty_options,
+                    format_func=lambda c: qty_label_map.get(c, c), key=f"vals_{dnd_key}",
                 )
 
             order_key = f"vals_order_{dnd_key}"
@@ -809,9 +884,13 @@ else:
 
             if HAS_SORTABLES and sel_v:
                 sel_sig = "_".join(sorted(sel_v))
-                ordered_v = sort_items(
-                    st.session_state[order_key], direction="horizontal", key=f"vals_sort_{dnd_key}_{sel_sig}",
+                # sort_items 元件本身只能顯示純文字，沒有 format_func 可用，
+                # 所以先把內部欄名轉成跟結果一致的顯示名稱再拖曳，拖曳完再換回內部欄名
+                display_order = [qty_label_map.get(c, c) for c in st.session_state[order_key]]
+                ordered_display = sort_items(
+                    display_order, direction="horizontal", key=f"vals_sort_{dnd_key}_{sel_sig}",
                 )
+                ordered_v = [qty_label_to_internal.get(lbl, lbl) for lbl in ordered_display]
                 st.session_state[order_key] = ordered_v
                 value_cols = ordered_v
                 st.caption("💡 可直接拖曳上方欄位調整加總／顯示順序。")
@@ -820,7 +899,12 @@ else:
             else:
                 value_cols = sel_v
 
-            qty_years_avail = sorted(set(c[:4] for c in value_cols if "申報量" in c))
+            if EST_QTY_COL in value_cols:
+                st.caption("💡 已加入「2026年推估數量」，報表會自動附上對應的推估占比／推估成長率欄位。")
+
+            # 「2026年推估數量」不算實際年度資料，這裡的年度偵測要排除它，
+            # 避免使用者只選了推估數量、卻誤以為可以選「2026年」的實際占比／成長率
+            qty_years_avail = sorted(set(c[:4] for c in value_cols if "申報量" in c and c != EST_QTY_COL))
             has_qty = len(qty_years_avail) > 0
             default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail]
             pct_years = st.multiselect(
@@ -828,6 +912,26 @@ else:
                 options=qty_years_avail, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
             )
             add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, disabled=not has_qty, key=f"growth_{dnd_key}")
+
+            def growth_pair_label(y1, y2):
+                # 2026 年只有 1-5 月的資料，標籤要特別標示，避免使用者誤以為是全年成長率
+                y1d = f"{y1}年(1-5月)" if y1 == "2026" else f"{y1}年"
+                y2d = f"{y2}年(1-5月)" if y2 == "2026" else f"{y2}年"
+                return f"{y1d} → {y2d}"
+
+            growth_pair_options = list(zip(qty_years_avail, qty_years_avail[1:]))
+            growth_pairs = []
+            if add_growth:
+                if growth_pair_options:
+                    growth_pairs = st.multiselect(
+                        "選擇要顯示的成長率年度區間 (可複選，預設全選)",
+                        options=growth_pair_options,
+                        default=growth_pair_options,
+                        format_func=lambda p: growth_pair_label(*p),
+                        key=f"growth_pairs_{dnd_key}",
+                    )
+                else:
+                    st.caption("⚠️ 目前選擇的數值欄位不足兩個年度，無法計算成長率。")
 
             # 標題與檔名都要反映「篩選了哪些欄位」：成分一定顯示；其餘欄位（劑型/劑量/規格/廠商）
             # 只有在使用者有實際篩選時才附加上去，沒特別篩選的欄位就不出現在標題/檔名裡
@@ -860,7 +964,7 @@ else:
 
             if value_cols and not df_filtered.empty:
                 rows, pct_cols, growth_cols = build_nested_rows(
-                    df_filtered, row_fields, subtotal_fields, value_cols, pct_years, add_growth
+                    df_filtered, row_fields, subtotal_fields, value_cols, pct_years, growth_pairs,
                 )
                 st.markdown("### 📄 報表即時預覽")
                 table_html = build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report_title)
