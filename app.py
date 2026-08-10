@@ -81,6 +81,9 @@ EST_GROWTH_COL = "2025-2026推估成長率(%)"
 # 的選單裡讓使用者勾選（而不是只要勾了推估數量就自動夾帶），這兩個是選單裡專用的識別值
 EST_PCT_YEAR = "2026推估"
 EST_GROWTH_PAIR = ("2025", "2026推估")
+# 讓「2026年推估數量」可以跟其他年度數量一樣，直接出現在第4步的「選擇要加總的數值欄位」
+# 選單裡（預設勾選），不用再另外一個獨立的勾選框
+QTY_DISPLAY_LABEL[EST_QTY_COL] = ("2026年推估", "數量")
 
 
 @st.cache_data(show_spinner=False)
@@ -878,7 +881,7 @@ else:
                 year, label = QTY_DISPLAY_LABEL.get(internal_col, (None, internal_col))
                 return f"{year} {label}" if year else label
 
-            qty_options = list(QTY_COL_MAP.values())
+            qty_options = list(QTY_COL_MAP.values()) + [EST_QTY_COL]
             qty_label_map = {c: qty_display_label(c) for c in qty_options}
             qty_label_to_internal = {v: k for k, v in qty_label_map.items()}
             with st.expander("🔧 如需排除年度請展開勾選 (預設全選)", expanded=False):
@@ -913,7 +916,8 @@ else:
                 value_cols = sel_v
 
             # 以下三個「2026推估」相關項目彼此完全獨立、互不綁定，可以各自單獨勾選／不選：
-            #   1) 加入 2026年推估數量 (顯示欄位)
+            #   1) 2026年推估數量 —— 現在跟其他年度數量一樣，直接是上面「選擇要加總的數值欄位」
+            #      選單裡的一個選項（預設勾選），不再用獨立的勾選框
             #   2) 加入年度占比 → 2026推估 (占比選單裡的一個選項)
             #   3) 加入年度成長率 → 2025→2026年推估 (成長率選單裡的一個選項)
             # 「2026年推估數量」不算實際年度資料，這裡的年度偵測要排除它，
@@ -921,16 +925,7 @@ else:
             qty_years_avail = sorted(set(c[:4] for c in value_cols if "申報量" in c and c != EST_QTY_COL))
             has_qty = len(qty_years_avail) > 0
 
-            # 1) 「2026年推估數量」獨立用一個明顯的勾選框呈現，不藏在上面的下拉選單裡，
-            # 這樣不用點進選單、往下捲動或打字搜尋才找得到 —— 一眼就能看到、勾了就直接加進報表
-            add_est = st.checkbox(
-                "➕ 加入 2026年推估數量 (以1-5月數量 ÷5×12 估算全年)",
-                value=True, key=f"est_{dnd_key}",
-            )
-            if add_est:
-                value_cols = value_cols + [EST_QTY_COL]
-
-            # 2) 占比選單：「2026推估」永遠是選單裡的一個選項，跟是否勾選「加入2026年推估數量」無關，
+            # 2) 占比選單：「2026推估」永遠是選單裡的一個選項，跟是否選了「2026年推估數量」欄位無關，
             # 預設連同 2025、2026 一起勾起來（所以預設會有 3 個占比欄位）
             pct_options = list(qty_years_avail) + [EST_PCT_YEAR]
             default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail] + [EST_PCT_YEAR]
