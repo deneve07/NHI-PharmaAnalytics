@@ -857,20 +857,15 @@ else:
             # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-5月) 數量」），
             # 而不是內部使用的原始欄名（例如「2026年申報量」），避免使用者選欄位時對不上結果
             def qty_display_label(internal_col):
-                if internal_col == EST_QTY_COL:
-                    return "2026年 推估數量"
                 year, label = QTY_DISPLAY_LABEL.get(internal_col, (None, internal_col))
                 return f"{year} {label}" if year else label
 
-            # 「2026年推估數量」現在跟其他年度數量欄位一樣，可以獨立勾選，
-            # 不需要同時勾選「2026年(1-5月)數量」──放在選項清單最後面，預設不勾選（需要使用者自己選用）
-            qty_options = list(QTY_COL_MAP.values()) + [EST_QTY_COL]
-            default_qty_options = list(QTY_COL_MAP.values())
+            qty_options = list(QTY_COL_MAP.values())
             qty_label_map = {c: qty_display_label(c) for c in qty_options}
             qty_label_to_internal = {v: k for k, v in qty_label_map.items()}
-            with st.expander("🔧 選擇要加總的數值欄位 (含 2026年推估數量，預設全選實際年度數量)", expanded=True):
+            with st.expander("🔧 如需排除年度請展開勾選 (預設全選)", expanded=False):
                 sel_v = st.multiselect(
-                    "選擇要加總的數值欄位", options=qty_options, default=default_qty_options,
+                    "選擇要加總的數值欄位", options=qty_options, default=qty_options,
                     format_func=lambda c: qty_label_map.get(c, c), key=f"vals_{dnd_key}",
                 )
 
@@ -899,8 +894,14 @@ else:
             else:
                 value_cols = sel_v
 
-            if EST_QTY_COL in value_cols:
-                st.caption("💡 已加入「2026年推估數量」，報表會自動附上對應的推估占比／推估成長率欄位。")
+            # 「2026年推估數量」獨立用一個明顯的勾選框呈現，不藏在上面的下拉選單裡，
+            # 這樣不用點進選單、往下捲動或打字搜尋才找得到 —— 一眼就能看到、勾了就直接加進報表
+            add_est = st.checkbox(
+                "➕ 加入 2026年推估數量 (以1-5月數量 ÷5×12 估算全年，並自動附上對應的推估占比／推估成長率；不需要同時勾選2026年(1-5月)數量)",
+                value=False, key=f"est_{dnd_key}",
+            )
+            if add_est:
+                value_cols = value_cols + [EST_QTY_COL]
 
             # 「2026年推估數量」不算實際年度資料，這裡的年度偵測要排除它，
             # 避免使用者只選了推估數量、卻誤以為可以選「2026年」的實際占比／成長率
