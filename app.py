@@ -177,7 +177,7 @@ def order_display_cols(value_cols, pct_cols, growth_cols):
 
 def pretty_header(col: str):
     """把內部欄名轉成「多行標題」的字串清單（2或3行），呼叫端自行用 <br>（HTML）或 \\n（Excel）組合。
-    2026年(1-5月)的數量/占比改成三行顯示；成長率欄位一律移除「年」字。"""
+    2026年(1-5月)的數量/占比改成三行顯示；占比/成長率欄位的年份／年度區間都保留「年」字。"""
     if col == "2026年申報量":
         return ["2026年", "(1-5月)", "數量"]
     if col == EST_QTY_COL:
@@ -188,20 +188,20 @@ def pretty_header(col: str):
     if col == "2026年占比(%)":
         return ["2026年", "(1-5月)", "占比(%)"]
     if col == EST_PCT_COL:
-        return ["2026推估", "占比(%)"]
+        return ["2026年推估", "占比(%)"]
     m = re.match(r"^(\d{4})年占比\(%\)$", col)
     if m:
         y = m.group(1)
-        return [y, "占比(%)"]
+        return [f"{y}年", "占比(%)"]
 
     if col == EST_GROWTH_COL:
-        return ["2025-2026", "推估成長率(%)"]
+        return ["2025-2026年推估", "成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
         y1d = f"{y1}(1-5月)" if y1 == "2026" else y1
         y2d = f"{y2}(1-5月)" if y2 == "2026" else y2
-        return [f"{y1d}-{y2d}", "成長率(%)"]
+        return [f"{y1d}-{y2d}年", "成長率(%)"]
 
     return [col]
 
@@ -407,12 +407,15 @@ def safe_numeric(v):
 # #DCE6F1 小計、#B8CCE4 總計）
 # ============================================================
 
-# 字型统一使用同一組字型堆疊：優先用微軟正黑體/Microsoft JhengHei（如果使用者電腦有安裝），
-# 否則退回到用 <link> 額外載入的 Noto Sans TC（Google Fonts，一定會被載入成功，中文、數字、英文
-# 都涵蓋在內），最後才是瀏覽器預設的 sans-serif。這樣不管在哪台裝置匯出 PNG，標題、表頭、
-# 數字、頁尾都會套用同一套字型，不會因為某些機器沒裝微軟正黑體，數字被瀏覽器換成預設的
-# serif 字型（例如 Times New Roman），造成畫面上字型不統一。
-FONT_FAMILY = "'微軟正黑體', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif"
+# 字型統一使用同一組字型堆疊。這裡刻意把 Google Fonts 載入的「Noto Sans TC」放在最前面，
+# 而不是微軟正黑體/Microsoft JhengHei：
+#   之前雖然三個字型都放進了同一個堆疊，但微軟正黑體/Microsoft JhengHei 通常沒有「真正設計的
+#   粗體字檔」，瀏覽器/系統只能用「模擬粗體(faux bold)」硬把筆畫加粗，這種模擬粗體的字形
+#   （尤其是英文字母）跟原本的細體看起來會明顯不一樣，才會出現「標題(粗體)」跟「表格內容(細體)」
+#   字型風格不一致的狀況。改成優先用 Noto Sans TC 之後，因為 Google Fonts 有把 400(細體)跟
+#   700(粗體) 這兩個字重各自獨立設計、獨立下載，粗體不是用模擬的，所以標題、表頭、數字、頁尾
+#   不管字重粗細，看起來都會是同一套字型、同一種風格。
+FONT_FAMILY = "'Noto Sans TC', '微軟正黑體', 'Microsoft JhengHei', sans-serif"
 HEADER_COLOR = "#1F497D"
 SUBTOTAL_COLOR = "#DCE6F1"
 TOTAL_COLOR = "#B8CCE4"
@@ -487,7 +490,16 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
     )
     html.append("</div></div>")
 
-    style_block = f"""
+    # 網頁即時預覽（st.markdown）跟匯出 PNG（components.html 的 iframe）是兩個不同的渲染環境，
+    # 之前 Google Fonts 的 <link> 只加在匯出 PNG 用的 CAPTURE_HTML_TEMPLATE 裡，網頁預覽本身
+    # 沒有載入 Noto Sans TC，這裡一併加上，確保「畫面上看到的預覽」跟「匯出的 PNG」字型一致。
+    font_link = (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">'
+    )
+
+    style_block = font_link + f"""
     <style>
         .report-preview-wrapper {{ padding: 15px 0; }}
         .report-container {{
@@ -1015,7 +1027,7 @@ else:
             pct_options = list(qty_years_avail) + [EST_PCT_YEAR]
             default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail] + [EST_PCT_YEAR]
             pct_years = st.multiselect(
-                "➕ 加入年度占比(%) (可只選需要的年份；2026推估 為 2026年推估數量的占比)",
+                "➕ 加入年度占比(%) (可只選需要的年份)",
                 options=pct_options, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
                 format_func=pct_year_label,
             )
