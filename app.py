@@ -873,7 +873,7 @@ else:
 
             st.caption(f"篩選後共 **{len(df_filtered):,}** 筆資料")
 
-            st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2023~2026年 全部數量)")
+            st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2023~2025年 + 2026年推估 數量)")
 
             # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-5月) 數量」），
             # 而不是內部使用的原始欄名（例如「2026年申報量」），避免使用者選欄位時對不上結果
@@ -884,36 +884,68 @@ else:
             qty_options = list(QTY_COL_MAP.values()) + [EST_QTY_COL]
             qty_label_map = {c: qty_display_label(c) for c in qty_options}
             qty_label_to_internal = {v: k for k, v in qty_label_map.items()}
-            with st.expander("🔧 如需排除年度請展開勾選 (預設全選)", expanded=False):
-                sel_v = st.multiselect(
-                    "選擇要加總的數值欄位", options=qty_options, default=qty_options,
-                    format_func=lambda c: qty_label_map.get(c, c), key=f"vals_{dnd_key}",
-                )
 
-            order_key = f"vals_order_{dnd_key}"
-            if order_key not in st.session_state:
-                st.session_state[order_key] = list(sel_v)
+            # 跟第2步的拖曳介面呈現方式一致：未選用的欄位放在上方「可用欄位」，
+            # 已選用、會加總／顯示的欄位放在下方，且可拖曳調整加總／顯示順序。
+            # 預設把「2026年(1-5月)數量」排除在外（放進「可用欄位」），其餘（2023~2025年 + 2026年推估）預設選用。
+            DEFAULT_EXCLUDED_QTY = ["2026年申報量"]
+            qty_state_key = f"qty_state_{dnd_key}"
+            if qty_state_key not in st.session_state:
+                default_selected = [c for c in qty_options if c not in DEFAULT_EXCLUDED_QTY]
+                default_available = [c for c in qty_options if c in DEFAULT_EXCLUDED_QTY]
+                st.session_state[qty_state_key] = {"available": default_available, "selected": default_selected}
             else:
-                prev_order = [c for c in st.session_state[order_key] if c in sel_v]
-                prev_order += [c for c in sel_v if c not in set(prev_order)]
-                st.session_state[order_key] = prev_order
+                prev_qty = st.session_state[qty_state_key]
+                avail_q = [c for c in prev_qty["available"] if c in qty_options]
+                sel_q = [c for c in prev_qty["selected"] if c in qty_options]
+                known_q = set(avail_q) | set(sel_q)
+                avail_q += [c for c in qty_options if c not in known_q]
+                st.session_state[qty_state_key] = {"available": avail_q, "selected": sel_q}
 
-            if HAS_SORTABLES and sel_v:
-                sel_sig = "_".join(sorted(sel_v))
-                # sort_items 元件本身只能顯示純文字，沒有 format_func 可用，
-                # 所以先把內部欄名轉成跟結果一致的顯示名稱再拖曳，拖曳完再換回內部欄名
-                display_order = [qty_label_map.get(c, c) for c in st.session_state[order_key]]
-                ordered_display = sort_items(
-                    display_order, direction="horizontal", key=f"vals_sort_{dnd_key}_{sel_sig}",
+            use_qty_fallback = st.checkbox(
+                "⚠️ 拖曳排序出現錯誤時，改用勾選方式選擇欄位 (勾選順序＝欄位順序)",
+                value=False, key=f"use_qty_fallback_{dnd_key}",
+            )
+
+            if HAS_SORTABLES and not use_qty_fallback:
+                qty_containers = sort_items(
+                    [
+                        {
+                            "header": "📋 可用欄位 (拖曳到下方使用)",
+                            "items": [qty_label_map[c] for c in st.session_state[qty_state_key]["available"]],
+                        },
+                        {
+                            "header": "🧮 要加總的數值欄位 (由左到右排列)",
+                            "items": [qty_label_map[c] for c in st.session_state[qty_state_key]["selected"]],
+                        },
+                    ],
+                    multi_containers=True, direction="horizontal", key=f"qty_dnd_{dnd_key}",
                 )
-                ordered_v = [qty_label_to_internal.get(lbl, lbl) for lbl in ordered_display]
-                st.session_state[order_key] = ordered_v
-                value_cols = ordered_v
+                if qty_containers and len(qty_containers) > 1:
+                    avail_internal = [qty_label_to_internal.get(lbl, lbl) for lbl in qty_containers[0]["items"]]
+                    sel_internal = [qty_label_to_internal.get(lbl, lbl) for lbl in qty_containers[1]["items"]]
+                    st.session_state[qty_state_key] = {"available": avail_internal, "selected": sel_internal}
+                value_cols = st.session_state[qty_state_key]["selected"]
                 st.caption("💡 可直接拖曳上方欄位調整加總／顯示順序。")
-            elif not sel_v:
-                value_cols = []
-            else:
+            elif HAS_SORTABLES:
+                sel_v = st.multiselect(
+                    "選擇要加總的數值欄位 (依勾選順序排列)",
+                    options=qty_options, default=st.session_state[qty_state_key]["selected"],
+                    format_func=lambda c: qty_label_map.get(c, c), key=f"qty_fallback_{dnd_key}",
+                )
+                st.session_state[qty_state_key] = {
+                    "available": [c for c in qty_options if c not in sel_v], "selected": sel_v,
+                }
                 value_cols = sel_v
+            else:
+                st.error("尚未安裝 streamlit-sortables 套件，暫以勾選方式呈現，請於 requirements.txt 加入 streamlit-sortables 後重新部署即可拖曳。")
+                value_cols = st.multiselect(
+                    "選擇要加總的數值欄位", options=qty_options, default=qty_options,
+                    format_func=lambda c: qty_label_map.get(c, c), key=f"qty_fallback_static_{dnd_key}",
+                )
+
+            if not value_cols:
+                st.info("請至少選擇一個要加總的數值欄位。")
 
             # 以下三個「2026推估」相關項目彼此完全獨立、互不綁定，可以各自單獨勾選／不選：
             #   1) 2026年推估數量 —— 現在跟其他年度數量一樣，直接是上面「選擇要加總的數值欄位」
@@ -927,11 +959,20 @@ else:
 
             # 2) 占比選單：「2026推估」永遠是選單裡的一個選項，跟是否選了「2026年推估數量」欄位無關，
             # 預設連同 2025、2026 一起勾起來（所以預設會有 3 個占比欄位）
+            # 「2026」占比其實只有1-5月的資料，顯示文字要特別標示，避免使用者誤以為是全年占比
+            def pct_year_label(y):
+                if y == EST_PCT_YEAR:
+                    return "2026推估"
+                if y == "2026":
+                    return "2026(1-5月)"
+                return y
+
             pct_options = list(qty_years_avail) + [EST_PCT_YEAR]
             default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail] + [EST_PCT_YEAR]
             pct_years = st.multiselect(
                 "➕ 加入年度占比(%) (可只選需要的年份；2026推估 為 2026年推估數量的占比，跟是否顯示2026年推估數量無關)",
                 options=pct_options, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
+                format_func=pct_year_label,
             )
             add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, disabled=not has_qty, key=f"growth_{dnd_key}")
 
