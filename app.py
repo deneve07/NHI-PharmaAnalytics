@@ -50,6 +50,46 @@ except ImportError:
 
 st.set_page_config(page_title="健保資料庫分析系統", page_icon="📊", layout="wide")
 
+# ============================================================
+# 密碼驗證（進入頁面前）
+# ============================================================
+# 密碼放在 Streamlit 的 secrets 機制裡，不要寫死在程式碼中：
+#   1. 本機開發：在專案根目錄建立 .streamlit/secrets.toml（這個檔案不要上傳到 Git／公開的原始碼），內容例如：
+#        APP_PASSWORD = "你的密碼"
+#   2. 部署到 Streamlit Community Cloud：到 App 的 Settings → Secrets，貼上同樣的內容即可，
+#      不需要另外建立檔案，Cloud 會用同一組 st.secrets 讀取。
+# 之後如果要換密碼，只要改 secrets 裡的值，不用改程式碼、也不會留在 Git 歷史紀錄裡。
+
+
+def check_password() -> bool:
+    if st.session_state.get("password_ok", False):
+        return True
+
+    st.markdown("## 🔒 請輸入密碼")
+    show_pw = st.checkbox("👁️ 顯示密碼", value=False, key="show_pw_toggle")
+
+    with st.form("password_form"):
+        pw = st.text_input(
+            "密碼", type="default" if show_pw else "password", key="pw_input",
+        )
+        submitted = st.form_submit_button("登入", type="primary")
+
+    if submitted:
+        correct_pw = st.secrets.get("APP_PASSWORD")
+        if not correct_pw:
+            st.error("⚠️ 尚未設定密碼，請在 .streamlit/secrets.toml (或 Streamlit Cloud 的 Secrets 設定) 加入 APP_PASSWORD。")
+        elif pw == correct_pw:
+            st.session_state["password_ok"] = True
+            st.rerun()
+        else:
+            st.error("密碼錯誤，請再試一次。")
+    return False
+
+
+if not check_password():
+    st.stop()
+
+
 DATA_FILE = "data2023-2026.csv"
 
 # 只開放這五個欄位供拖曳排列（依使用者要求，不像 0731 版本開放「所有欄位」）
