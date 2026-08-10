@@ -148,7 +148,7 @@ def pretty_header(col: str):
     if col == "2026年占比(%)":
         return ["2026年", "(1-5月)", "占比(%)"]
     if col == EST_PCT_COL:
-        return ["2026", "推估占比(%)"]
+        return ["2026推估", "占比(%)"]
     m = re.match(r"^(\d{4})年占比\(%\)$", col)
     if m:
         y = m.group(1)
