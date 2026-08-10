@@ -1010,7 +1010,7 @@ else:
             pct_options = list(qty_years_avail) + [EST_PCT_YEAR]
             default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail] + [EST_PCT_YEAR]
             pct_years = st.multiselect(
-                "➕ 加入年度占比(%) (可只選需要的年份；2026推估 為 2026年推估數量的占比，跟是否顯示2026年推估數量無關)",
+                "➕ 加入年度占比(%) (可只選需要的年份；2026推估 為 2026年推估數量的占比)",
                 options=pct_options, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
                 format_func=pct_year_label,
             )
@@ -1035,7 +1035,7 @@ else:
             if add_growth:
                 if growth_pair_options:
                     growth_pairs = st.multiselect(
-                        "選擇要顯示的成長率年度區間 (可複選，預設全選；2025→2026年推估 跟是否顯示2026年推估數量無關)",
+                        "選擇要顯示的成長率年度區間 (可複選，預設全選)",
                         options=growth_pair_options,
                         default=growth_pair_options,
                         format_func=lambda p: growth_pair_label(*p),
