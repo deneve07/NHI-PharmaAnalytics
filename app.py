@@ -77,6 +77,10 @@ BLANK_TOKENS = {"nan", "none", "<na>", "null", ""}
 EST_QTY_COL = "2026年推估申報量"
 EST_PCT_COL = "2026推估占比(%)"
 EST_GROWTH_COL = "2025-2026推估成長率(%)"
+# 讓「推估占比／推估成長率」可以像其他年度一樣，直接出現在「加入年度占比」「加入年度成長率」
+# 的選單裡讓使用者勾選（而不是只要勾了推估數量就自動夾帶），這兩個是選單裡專用的識別值
+EST_PCT_YEAR = "2026推估"
+EST_GROWTH_PAIR = ("2025", "2026推估")
 
 
 @st.cache_data(show_spinner=False)
@@ -182,11 +186,11 @@ def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list,
     all_growth_pairs = [(qty_years[i], qty_years[i + 1]) for i in range(len(qty_years) - 1)]
     growth_cols = [f"{y1}-{y2}年成長率(%)" for (y1, y2) in all_growth_pairs if (y1, y2) in set(growth_pairs)]
 
-    # 「2026年推估數量」現在跟其他年度數量欄一樣，可以獨立被使用者勾選（不需要同時選「2026年(1-5月)數量」），
-    # 只要它有被選進 value_cols，就自動附上對應的推估占比／推估成長率
-    include_2026_estimate = EST_QTY_COL in value_cols
-    if include_2026_estimate:
+    # 推估占比／推估成長率現在是「選單裡的一個選項」，使用者要實際勾選 EST_PCT_YEAR / EST_GROWTH_PAIR
+    # 才會出現，而不是只要加了推估數量就自動附上
+    if EST_QTY_COL in value_cols and EST_PCT_YEAR in pct_years:
         pct_cols = pct_cols + [EST_PCT_COL]
+    if EST_QTY_COL in value_cols and EST_GROWTH_PAIR in growth_pairs:
         growth_cols = growth_cols + [EST_GROWTH_COL]
 
     def compute_extra_for_row(sums, top_totals):
@@ -897,8 +901,8 @@ else:
             # 「2026年推估數量」獨立用一個明顯的勾選框呈現，不藏在上面的下拉選單裡，
             # 這樣不用點進選單、往下捲動或打字搜尋才找得到 —— 一眼就能看到、勾了就直接加進報表
             add_est = st.checkbox(
-                "➕ 加入 2026年推估數量 (以1-5月數量 ÷5×12 估算全年，並自動附上對應的推估占比／推估成長率；不需要同時勾選2026年(1-5月)數量)",
-                value=False, key=f"est_{dnd_key}",
+                "➕ 加入 2026年推估數量 (以1-5月數量 ÷5×12 估算全年，並可另外勾選對應的推估占比／推估成長率；不需要同時勾選2026年(1-5月)數量)",
+                value=True, key=f"est_{dnd_key}",
             )
             if add_est:
                 value_cols = value_cols + [EST_QTY_COL]
@@ -907,20 +911,31 @@ else:
             # 避免使用者只選了推估數量、卻誤以為可以選「2026年」的實際占比／成長率
             qty_years_avail = sorted(set(c[:4] for c in value_cols if "申報量" in c and c != EST_QTY_COL))
             has_qty = len(qty_years_avail) > 0
+
+            # 占比選單：有勾選「加入2026年推估數量」時，額外加一個「2026推估」選項讓使用者選，
+            # 預設連同 2025、2026 一起勾起來（所以預設會有 3 個占比欄位）
+            pct_options = list(qty_years_avail) + ([EST_PCT_YEAR] if add_est else [])
             default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail]
+            if add_est:
+                default_pct_years = default_pct_years + [EST_PCT_YEAR]
             pct_years = st.multiselect(
                 "➕ 加入年度占比(%) (可只選需要的年份)",
-                options=qty_years_avail, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
+                options=pct_options, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
             )
             add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, disabled=not has_qty, key=f"growth_{dnd_key}")
 
             def growth_pair_label(y1, y2):
                 # 2026 年只有 1-5 月的資料，標籤要特別標示，避免使用者誤以為是全年成長率
+                if y2 == "2026推估":
+                    y1d = f"{y1}年(1-5月)" if y1 == "2026" else f"{y1}年"
+                    return f"{y1d} → 2026年推估"
                 y1d = f"{y1}年(1-5月)" if y1 == "2026" else f"{y1}年"
                 y2d = f"{y2}年(1-5月)" if y2 == "2026" else f"{y2}年"
                 return f"{y1d} → {y2d}"
 
             growth_pair_options = list(zip(qty_years_avail, qty_years_avail[1:]))
+            if add_est:
+                growth_pair_options = growth_pair_options + [EST_GROWTH_PAIR]
             growth_pairs = []
             if add_growth:
                 if growth_pair_options:
