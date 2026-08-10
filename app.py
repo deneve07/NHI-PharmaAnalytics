@@ -773,7 +773,9 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
         elif col_key in growth_cols:
             ws.column_dimensions[col_letter].width = 16
         elif col_key in pct_cols:
-            ws.column_dimensions[col_letter].width = 14
+            # 寬度需容得下最長的占比標題「2026年推估占比(%)」拆成兩行，
+            # 原本 14 太窄會被 Excel 自動換成三行（"2026年"/"推估"/"占比(%)"），改成 18 才夠兩行顯示
+            ws.column_dimensions[col_letter].width = 18
         else:
             ws.column_dimensions[col_letter].width = 18
 
