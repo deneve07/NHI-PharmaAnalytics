@@ -92,8 +92,26 @@ if not check_password():
 
 DATA_FILE = "data2023-2026.csv"
 
-# 只開放這五個欄位供拖曳排列（依使用者要求，不像 0731 版本開放「所有欄位」）
-FIXED_FIELDS = ["成分", "劑型", "劑量", "規格", "廠商"]
+# 只開放這幾個欄位供拖曳排列（依使用者要求，不像 0731 版本開放「所有欄位」）
+# 原本的五個維度欄位（成分/劑型/劑量/規格/廠商）之外，新增五個「顯示用」欄位：
+# 建保代碼(=藥品代碼)、商品名(=藥品英文名稱)、健保價(=支付價)、ATC碼(=ATC代碼)、
+# 許可證連結(=藥品代碼超連結，欄位內容顯示文字固定為「連結」，點擊可開啟原始網頁)
+FIXED_FIELDS = ["成分", "劑型", "劑量", "規格", "廠商", "建保代碼", "商品名", "健保價", "ATC碼", "許可證連結"]
+
+# 新欄位的「顯示欄名」-> 「CSV 原始欄名」對照表，載入資料時會把原始欄名改成顯示欄名，
+# 這樣後續的拖曳/篩選/分組邏輯可以直接沿用既有五個欄位的處理方式，不用另外寫一套。
+EXTRA_FIELD_SOURCE_MAP = {
+    "建保代碼": "藥品代號",
+    "商品名": "藥品英文名稱",
+    "健保價": "支付價",
+    "ATC碼": "ATC代碼",
+    "許可證連結": "藥品代碼超連結",
+}
+
+# 「許可證連結」欄位內容是完整網址，報表上一律只顯示文字「連結」，並把原始網址做成超連結，
+# 其餘程式碼用這個常數判斷是否要套用「超連結」的特殊呈現方式。
+LINK_FIELD = "許可證連結"
+LINK_DISPLAY_TEXT = "連結"
 
 # 原始資料的四個年度數量欄 -> 內部工作用欄名（沿用「申報量」關鍵字，讓占比/成長率引擎能自動辨識）
 QTY_COL_MAP = {
@@ -136,7 +154,13 @@ def load_data(path: str) -> pd.DataFrame:
 
     df.columns = df.columns.str.strip()
 
-    # 清洗五個維度欄位：去除空白，並把各種「無資料」寫法統一成空字串
+    # 把新增欄位的原始 CSV 欄名改成報表要用的顯示欄名（例如「藥品代號」→「建保代碼」），
+    # 之後 FIXED_FIELDS 相關的邏輯就能跟原本五個欄位一樣統一處理。
+    rename_map = {src: disp for disp, src in EXTRA_FIELD_SOURCE_MAP.items() if src in df.columns}
+    df = df.rename(columns=rename_map)
+
+    # 清洗所有可拖曳欄位：去除空白，並把各種「無資料」寫法統一成空字串
+    # （「許可證連結」欄位內容是網址，保留原始網址字串，不做 lower() 比對以外的處理）
     for col in FIXED_FIELDS:
         if col not in df.columns:
             df[col] = ""
@@ -467,7 +491,11 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
         for i, f in enumerate(row_fields):
             v = r["values"].get(f, "")
             align = "left" if i == 0 else "center"
-            html.append(f"<td style='{td_style}text-align:{align};'>{v}</td>")
+            if f == LINK_FIELD and v not in ("", None):
+                cell_html = f"<a href='{v}' target='_blank' rel='noopener' style='color:#1F497D;'>{LINK_DISPLAY_TEXT}</a>"
+            else:
+                cell_html = v
+            html.append(f"<td style='{td_style}text-align:{align};'>{cell_html}</td>")
         for c in display_cols:
             if c in extra_cols:
                 v, ok = safe_numeric(r["sums"].get(c, 0))
@@ -719,13 +747,18 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
     current_row = 2
     for r in rows:
         row_vals = []
+        link_col_for_row = None  # (欄位索引, 原始網址)：許可證連結欄要在儲存格顯示「連結」並附上超連結
         for f in row_fields:
             # 空字串必須寫成 None，而不是 ""：openpyxl 對空字串會產生
             # <c t="inlineStr"></c>（宣告是字串型別卻沒有 <is> 內容），
             # 這是不合法的 OOXML，Excel 開啟時就會跳出「部分內容有問題」的修復提示，
             # 且修復過程中可能連帶把頁首/頁尾等設定一併清掉。寫 None 則完全不產生該儲存格，才是合法的空白儲存格。
             val = r["values"].get(f, "")
-            row_vals.append(val if val != "" else None)
+            if f == LINK_FIELD and val not in ("", None):
+                link_col_for_row = (len(row_vals) + 1, val)
+                row_vals.append(LINK_DISPLAY_TEXT)
+            else:
+                row_vals.append(val if val != "" else None)
         for c in display_cols:
             if c in extra_cols:
                 v, ok = safe_numeric(r["sums"].get(c, 0))
@@ -758,6 +791,13 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
                 cell.fill = subtotal_fill
             elif r["type"] == "total":
                 cell.fill = total_fill
+
+        if link_col_for_row:
+            link_col_idx, link_url = link_col_for_row
+            link_cell = ws.cell(row=current_row, column=link_col_idx)
+            link_cell.hyperlink = link_url
+            link_cell.font = Font(name=font_family, size=12, underline="single", color="1F497D")
+
         current_row += 1
 
     # 同類型欄位（數量／占比／成長率）欄寬要一致。
@@ -847,7 +887,7 @@ else:
         df_comp = df_raw[df_raw["成分"].isin(comps_selected)]
 
         st.markdown("### 🧩 第2步：拖曳欄位到「報表欄位」，並排序")
-        st.caption("僅開放「成分、劑型、劑量、規格、廠商」五個欄位可拖曳排列。")
+        st.caption("僅開放「成分、劑型、劑量、規格、廠商、建保代碼、商品名、健保價、ATC碼、許可證連結」十個欄位可拖曳排列。")
 
         dnd_key = f"dnd_{'_'.join(sorted(comps_selected))}"
         state_key = f"pivot_state_{dnd_key}"
@@ -1082,20 +1122,42 @@ else:
             filename_parts = list(comps_selected) + filter_desc_parts_for_filename + ["廠商申報量排名"]
             report_title = "、".join(comps_selected) + "".join(filter_desc_parts_for_title) + "廠商申報量排名"
 
-            raw_filename = re.sub(r'[\\/*?:"<>|]', "_", "_".join(filename_parts))
             MAX_FILENAME_BYTES = 200  # 留安全餘裕，避免超過檔案系統上限 (通常 255 bytes)，
             # 也避免選太多成分/篩選條件時檔名過長導致下載失敗
             ext_reserve = 5  # 保留給 ".xlsx" / ".png" 副檔名的空間
-            if len(raw_filename.encode("utf-8")) + ext_reserve <= MAX_FILENAME_BYTES:
-                safe_filename = raw_filename
-            else:
+
+            def make_safe_filename(raw: str) -> str:
+                """把任意字串（自動產生的標題，或使用者自訂的標題）轉成安全檔名：
+                去除不合法字元，並在超過長度上限時截斷加上「...」。"""
+                raw = re.sub(r'[\\/*?:"<>|]', "_", raw)
+                if len(raw.encode("utf-8")) + ext_reserve <= MAX_FILENAME_BYTES:
+                    return raw
                 budget = MAX_FILENAME_BYTES - ext_reserve - 3  # 預留「...」空間
-                truncated = raw_filename
+                truncated = raw
                 while len(truncated.encode("utf-8")) > budget and len(truncated) > 0:
                     truncated = truncated[:-1]
-                safe_filename = truncated + "..."
+                return truncated + "..."
+
+            raw_filename = "_".join(filename_parts)
+            safe_filename = make_safe_filename(raw_filename)
 
             st.divider()
+
+            # 自訂標題／檔名：預設關閉，勾選後可自行輸入。一旦有輸入內容，
+            # 預覽標題、Excel 標題／檔名、PNG 圖片檔名都會改套用這個自訂標題，
+            # 不再使用依「成分＋篩選條件」自動組出來的標題／檔名。
+            custom_title_enabled = st.checkbox(
+                "✏️ 自訂標題／檔名 (勾選後可自行輸入，將套用於預覽標題、Excel、圖片檔名)",
+                value=False, key=f"custom_title_toggle_{dnd_key}",
+            )
+            if custom_title_enabled:
+                custom_title_input = st.text_input(
+                    "輸入自訂標題／檔名",
+                    value=report_title, key=f"custom_title_{dnd_key}",
+                )
+                if custom_title_input.strip():
+                    report_title = custom_title_input.strip()
+                    safe_filename = make_safe_filename(report_title)
 
             if value_cols and not df_filtered.empty:
                 rows, pct_cols, growth_cols = build_nested_rows(
