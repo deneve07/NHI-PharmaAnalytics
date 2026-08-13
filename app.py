@@ -513,7 +513,10 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
     html.append(
         "<div class='report-footer'>"
         "<span>中央健康保險署  政府資料開放平台 2026年資料</span>"
+        "<span class='report-footer-links'>"
         "<span>https://data.gov.tw/dataset/22131</span>"
+        "<span>https://data.gov.tw/dataset/23715</span>"
+        "</span>"
         "</div>"
     )
     html.append("</div></div>")
@@ -553,6 +556,9 @@ def build_html_table(rows, row_fields, value_cols, pct_cols, growth_cols, report
             display: flex; flex-wrap: wrap; justify-content: space-between;
             margin-top: 25px; padding-top: 15px; border-top: 1px solid #D9D9D9;
             font-size: 13px !important; font-family: {FONT_FAMILY}; font-weight: bold; color: #333333 !important;
+        }}
+        .report-footer-links {{
+            display: flex; flex-direction: column; align-items: flex-end; text-align: right;
         }}
     </style>
     """
@@ -706,7 +712,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 
     ws.oddHeader.center.text = f'&"Noto Sans TC,Bold"&16{report_title}'
     ws.oddFooter.left.text = '&"Noto Sans TC,Regular"&12中央健康保險署  政府資料開放平台 2026年資料'
-    ws.oddFooter.right.text = '&"Noto Sans TC,Regular"&12https://data.gov.tw/dataset/22131'
+    ws.oddFooter.right.text = '&"Noto Sans TC,Regular"&12https://data.gov.tw/dataset/22131\nhttps://data.gov.tw/dataset/23715'
 
     header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
     subtotal_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
