@@ -94,14 +94,14 @@ DATA_FILE = "data2023-2026.csv"
 
 # 只開放這幾個欄位供拖曳排列（依使用者要求，不像 0731 版本開放「所有欄位」）
 # 原本的五個維度欄位（成分/劑型/劑量/規格/廠商）之外，新增五個「顯示用」欄位：
-# 建保代碼(=藥品代碼)、商品名(=藥品英文名稱)、健保價(=支付價)、ATC碼(=ATC代碼)、
+# 健保代碼(=藥品代碼)、商品名(=藥品英文名稱)、健保價(=支付價)、ATC碼(=ATC代碼)、
 # 許可證連結(=藥品代碼超連結，欄位內容顯示文字固定為「連結」，點擊可開啟原始網頁)
-FIXED_FIELDS = ["成分", "劑型", "劑量", "規格", "廠商", "建保代碼", "商品名", "健保價", "ATC碼", "許可證連結"]
+FIXED_FIELDS = ["成分", "劑型", "劑量", "規格", "廠商", "健保代碼", "商品名", "健保價", "ATC碼", "許可證連結"]
 
 # 新欄位的「顯示欄名」-> 「CSV 原始欄名」對照表，載入資料時會把原始欄名改成顯示欄名，
 # 這樣後續的拖曳/篩選/分組邏輯可以直接沿用既有五個欄位的處理方式，不用另外寫一套。
 EXTRA_FIELD_SOURCE_MAP = {
-    "建保代碼": "藥品代號",
+    "健保代碼": "藥品代號",
     "商品名": "藥品英文名稱",
     "健保價": "支付價",
     "ATC碼": "ATC代碼",
@@ -154,7 +154,7 @@ def load_data(path: str) -> pd.DataFrame:
 
     df.columns = df.columns.str.strip()
 
-    # 把新增欄位的原始 CSV 欄名改成報表要用的顯示欄名（例如「藥品代號」→「建保代碼」），
+    # 把新增欄位的原始 CSV 欄名改成報表要用的顯示欄名（例如「藥品代號」→「健保代碼」），
     # 之後 FIXED_FIELDS 相關的邏輯就能跟原本五個欄位一樣統一處理。
     rename_map = {src: disp for disp, src in EXTRA_FIELD_SOURCE_MAP.items() if src in df.columns}
     df = df.rename(columns=rename_map)
@@ -893,7 +893,7 @@ else:
         df_comp = df_raw[df_raw["成分"].isin(comps_selected)]
 
         st.markdown("### 🧩 第2步：拖曳欄位到「報表欄位」，並排序")
-        st.caption("僅開放「成分、劑型、劑量、規格、廠商、建保代碼、商品名、健保價、ATC碼、許可證連結」十個欄位可拖曳排列。")
+        st.caption("僅開放「成分、劑型、劑量、規格、廠商、健保代碼、商品名、健保價、ATC碼、許可證連結」十個欄位可拖曳排列。")
 
         dnd_key = f"dnd_{'_'.join(sorted(comps_selected))}"
         state_key = f"pivot_state_{dnd_key}"
