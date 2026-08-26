@@ -845,14 +845,39 @@ if df_raw.empty:
 elif "成分" not in df_raw.columns:
     st.error(f"資料檔案缺少「成分」欄位，實際欄位為：{list(df_raw.columns)}")
 else:
+    import re
+
+    def _parse_ingredient(part):
+        # 嘗試把單一成分拆成「藥名」與「劑量數值」兩部分，例如
+        # "Amlodipine 10mg" -> 藥名 "amlodipine"、劑量 10.0
+        # 拆不出劑量數值時（格式特殊或無劑量），劑量視為 0，仍以藥名排序。
+        part = part.strip()
+        m = re.match(r"^(.*?)\s*([\d.]+)\s*\D*$", part)
+        if m and m.group(1).strip():
+            drug_name = m.group(1).strip().lower()
+            try:
+                dose_value = float(m.group(2))
+            except ValueError:
+                dose_value = 0.0
+        else:
+            drug_name = part.lower()
+            dose_value = 0.0
+        return drug_name, dose_value
+
     def _combo_sort_key(name):
-        # 複方成分常以「+」分隔多個單方組成，但同一複方在資料中可能因輸入順序不同
-        # （例如「A+B」與「B+A」）而被視為不同字串，導致排序時分散在清單各處。
-        # 這裡把每個「+」分隔的單方各自去除前後空白、轉小寫後重新排序再組合，
-        # 讓實質相同的複方（不論原始輸入順序）都會產生相同的排序鍵值，
-        # 排序時自然會排在一起，方便使用者尋找。
-        parts = [p.strip().lower() for p in name.split("+")]
-        return ("+".join(sorted(parts)), name.lower())
+        # 複方成分常以「+」分隔多個單方組成，原本排序是把整段（含劑量）當字串排序，
+        # 導致「Amlodipine 10mg+Atorvastatin 10mg」跟「Amlodipine 5mg+Atorvastatin 10mg」
+        # 因為劑量數字不同，被排到很遠的地方，即使是同一組複方也無法排在一起。
+        #
+        # 改成先只用「藥名」（忽略劑量、忽略原始順序）分組排序，讓同一組複方的所有劑量
+        # 組合排在一起；同一組內再依各藥名對應的劑量數值排序，讓結果穩定、好尋找。
+        parsed = sorted(
+            (_parse_ingredient(p) for p in name.split("+")),
+            key=lambda x: x[0],
+        )
+        drug_names = tuple(p[0] for p in parsed)
+        doses = tuple(p[1] for p in parsed)
+        return (drug_names, doses, name.lower())
 
     comp_options = sorted(
         [c for c in df_raw["成分"].dropna().unique() if c],
