@@ -318,6 +318,13 @@ def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list,
             df[tmp_col] = df[col].map(parse_dosage)
             sort_cols.append(tmp_col)
             temp_sort_cols.append(tmp_col)
+        elif col == "規格":
+            # 規格欄同樣需依數值排序 (例如 50ml < 100ml < 150ml)，而非字母排序，
+            # 否則字串比較會把 "100ml"、"150ml" 排在 "50ml" 之前（因為開頭字元 "1" < "5"）
+            tmp_col = "__sortkey_規格"
+            df[tmp_col] = df[col].map(parse_dosage)
+            sort_cols.append(tmp_col)
+            temp_sort_cols.append(tmp_col)
         else:
             sort_cols.append(col)
         sort_asc.append(True)
