@@ -179,7 +179,7 @@ def load_data(path: str) -> pd.DataFrame:
         cleaned = df[raw_col].astype(str).str.replace(",", "", regex=False).str.strip()
         df[internal_col] = pd.to_numeric(cleaned, errors="coerce").fillna(0)
 
-    # 2026 年推估全年數量：用 1-6 月數量 ÷6×12 估算。先在這裡逐列算好，
+    # 2026 年推估全年數量：用 1-5 月數量 ÷5×12 估算。先在這裡逐列算好，
     # 之後不管怎麼篩選/分組加總，用一般的加總邏輯就能得到正確的推估總量
     # （因為「先加總再乘」跟「先乘再加總」對於固定倍率而言結果相同）。
     df[EST_QTY_COL] = df["2026年申報量"] * 12 / 6
@@ -845,7 +845,19 @@ if df_raw.empty:
 elif "成分" not in df_raw.columns:
     st.error(f"資料檔案缺少「成分」欄位，實際欄位為：{list(df_raw.columns)}")
 else:
-    comp_options = sorted([c for c in df_raw["成分"].dropna().unique() if c])
+    def _combo_sort_key(name):
+        # 複方成分常以「+」分隔多個單方組成，但同一複方在資料中可能因輸入順序不同
+        # （例如「A+B」與「B+A」）而被視為不同字串，導致排序時分散在清單各處。
+        # 這裡把每個「+」分隔的單方各自去除前後空白、轉小寫後重新排序再組合，
+        # 讓實質相同的複方（不論原始輸入順序）都會產生相同的排序鍵值，
+        # 排序時自然會排在一起，方便使用者尋找。
+        parts = [p.strip().lower() for p in name.split("+")]
+        return ("+".join(sorted(parts)), name.lower())
+
+    comp_options = sorted(
+        [c for c in df_raw["成分"].dropna().unique() if c],
+        key=_combo_sort_key,
+    )
 
     if "comps_selected_persist" not in st.session_state:
         st.session_state["comps_selected_persist"] = []
@@ -870,7 +882,7 @@ else:
             return 2
 
         filtered_options = [c for c in comp_options if kw in c.lower()]
-        filtered_options.sort(key=lambda c: (_relevance_rank(c), c.lower()))
+        filtered_options.sort(key=lambda c: (_relevance_rank(c), _combo_sort_key(c)))
     else:
         filtered_options = []
 
@@ -1069,7 +1081,7 @@ else:
 
             # 2) 占比選單：「2026推估」永遠是選單裡的一個選項，跟是否選了「2026年推估數量」欄位無關，
             # 預設連同 2025、2026 一起勾起來（所以預設會有 3 個占比欄位）
-            # 「2026」占比其實只有1-5月的資料，顯示文字要特別標示，避免使用者誤以為是全年占比
+            # 「2026」占比其實只有1-6月的資料，顯示文字要特別標示，避免使用者誤以為是全年占比
             def pct_year_label(y):
                 if y == EST_PCT_YEAR:
                     return "2026推估"
@@ -1095,7 +1107,7 @@ else:
                 y2d = f"{y2}年(1-6月)" if y2 == "2026" else f"{y2}年"
                 return f"{y1d} → {y2d}"
 
-            # 3) 「2025年→2026年(1-6月)」這組實際成長率會拿全年資料跟只有1-5月的資料相比，
+            # 3) 「2025年→2026年(1-6月)」這組實際成長率會拿全年資料跟只有1-6月的資料相比，
             # 容易誤導，所以不提供這個選項；「2025→2026年推估」則永遠是選單裡的一個選項，
             # 跟是否勾選「加入2026年推估數量」無關
             growth_pair_options = [
