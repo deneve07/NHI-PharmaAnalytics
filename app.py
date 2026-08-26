@@ -836,7 +836,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 # ============================================================
 
 st.title("📊 健保資料庫分析工具")
-st.caption("先選擇成分，接著把需要的欄位拖到「報表欄位」，即時預覽會隨著您的設定更新，效果如同 Excel 樞紐分析。")
+st.caption("申報量已更新至2026年6月。")
 
 df_raw = load_data(DATA_FILE)
 
