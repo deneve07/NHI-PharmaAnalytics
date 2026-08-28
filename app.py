@@ -354,15 +354,15 @@ def pretty_header(col: str):
     if col == "2026年占比(%)":
         return ["2026年", "(1-6月)", "占比(%)"]
     if col == "2026年含包裹占比(%)":
-        return ["2026年(含包裹)", "(1-6月)", "占比(%)"]
+        return ["2026年", "(含包裹)(1-6月)", "占比(%)"]
     if col == EST_PCT_COL:
         return ["2026年", "推估占比(%)"]
     if col == EST_BUNDLE_PCT_COL:
-        return ["2026年(含包裹)", "推估占比(%)"]
+        return ["2026年", "(含包裹)", "推估占比(%)"]
     m = re.match(r"^(\d{4})年含包裹占比\(%\)$", col)
     if m:
         y = m.group(1)
-        return [f"{y}年(含包裹)", "占比(%)"]
+        return [f"{y}年", "(含包裹)", "占比(%)"]
     m = re.match(r"^(\d{4})年占比\(%\)$", col)
     if m:
         y = m.group(1)
@@ -371,13 +371,13 @@ def pretty_header(col: str):
     if col == EST_GROWTH_COL:
         return ["2025-2026年", "推估成長率(%)"]
     if col == EST_BUNDLE_GROWTH_COL:
-        return ["2025-2026年(含包裹)", "推估成長率(%)"]
+        return ["2025-2026年", "(含包裹)", "推估成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年含包裹成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
         y1d = f"{y1}(1-6月)" if y1 == "2026" else y1
         y2d = f"{y2}(1-6月)" if y2 == "2026" else y2
-        return [f"{y1d}-{y2d}年(含包裹)", "成長率(%)"]
+        return [f"{y1d}-{y2d}年", "(含包裹)", "成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
@@ -889,10 +889,15 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 
     # 標題列
     header_texts = list(row_fields)
+    max_header_lines = 1
     for c in display_cols:
-        header_texts.append("\n".join(pretty_header(c)))
+        lines = pretty_header(c)
+        max_header_lines = max(max_header_lines, len(lines))
+        header_texts.append("\n".join(lines))
     ws.append(header_texts)
-    ws.row_dimensions[1].height = 60
+    # 標題列高度依「最多行數的表頭」動態調整（例如含包裹占比/成長率欄位變成三行後，
+    # 原本固定 60 會太矮導致文字被裁切），每多一行大約多需要 20 左右的高度。
+    ws.row_dimensions[1].height = max(60, 20 * max_header_lines + 15)
     ws.print_title_rows = "1:1"
 
     for col_idx in range(1, len(headers) + 1):
@@ -1172,8 +1177,12 @@ else:
 
             st.caption(f"篩選後共 **{len(df_filtered):,}** 筆資料")
 
-            st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2023~2025年 + 2026年推估 數量)")
-            st.caption(QTY_DEFINITION_NOTE)
+            st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2024~2026年推估 含包裹數量)")
+            st.markdown(
+                f"<div style='background-color:#EAF1FB;border-left:4px solid #1F497D;"
+                f"padding:8px 12px;border-radius:4px;font-size:13px;color:#333333;'>{QTY_DEFINITION_NOTE}</div>",
+                unsafe_allow_html=True,
+            )
 
             # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-6月) 數量」），
             # 而不是內部使用的原始欄名（例如「2026年申報量」），避免使用者選欄位時對不上結果
@@ -1187,14 +1196,13 @@ else:
 
             # 跟第2步的拖曳介面呈現方式一致：未選用的欄位放在上方「可用欄位」，
             # 已選用、會加總／顯示的欄位放在下方，且可拖曳調整加總／顯示順序。
-            # 預設把「2026年(1-6月)數量」排除在外（放進「可用欄位」），其餘（2023~2025年 + 2026年推估）預設選用。
-            # 「含包裹」數量欄位是新增的選用指標，預設一律排除（放進「可用欄位」），
-            # 不影響既有報表預設樣貌；使用者需要時自行拖曳加入。
-            DEFAULT_EXCLUDED_QTY = ["2026年申報量"] + list(BUNDLE_QTY_COL_MAP.values()) + [EST_BUNDLE_QTY_COL]
+            # 預設帶入「2024、2025、2026年推估」三個含包裹數量欄位，其餘欄位（含一般醫令量、
+            # 2023年含包裹、2026年(1-6月)含包裹）預設放進「可用欄位」，使用者需要時自行拖曳加入。
+            DEFAULT_SELECTED_QTY = ["2024年含包裹申報量", "2025年含包裹申報量", EST_BUNDLE_QTY_COL]
             qty_state_key = f"qty_state_{dnd_key}"
             if qty_state_key not in st.session_state:
-                default_selected = [c for c in qty_options if c not in DEFAULT_EXCLUDED_QTY]
-                default_available = [c for c in qty_options if c in DEFAULT_EXCLUDED_QTY]
+                default_selected = [c for c in DEFAULT_SELECTED_QTY if c in qty_options]
+                default_available = [c for c in qty_options if c not in DEFAULT_SELECTED_QTY]
                 st.session_state[qty_state_key] = {"available": default_available, "selected": default_selected}
             else:
                 prev_qty = st.session_state[qty_state_key]
@@ -1257,7 +1265,7 @@ else:
             pct_years = st.multiselect(
                 "➕ 加入年度占比(%) (可只選需要的年份；含包裹／不含包裹分開列，可各自單選或都選)",
                 options=PCT_YEAR_CODE_OPTIONS,
-                default=[y for y in ["2025", "2026"] if y in QTY_YEARS] + [EST_PCT_YEAR],
+                default=["2025含包裹", EST_BUNDLE_PCT_YEAR],
                 key=f"pct_{dnd_key}",
                 format_func=pct_year_code_label,
             )
@@ -1268,10 +1276,10 @@ else:
             growth_pairs = []
             if add_growth:
                 growth_pairs = st.multiselect(
-                    "選擇要顯示的成長率年度區間 (可複選，預設全選；僅提供同類型「醫令量↔醫令量」"
+                    "選擇要顯示的成長率年度區間 (可複選；僅提供同類型「醫令量↔醫令量」"
                     "或「含包裹↔含包裹」的區間，不提供跨類型比較)",
                     options=GROWTH_PAIR_CODE_OPTIONS,
-                    default=GROWTH_PAIR_CODE_OPTIONS,
+                    default=[EST_BUNDLE_GROWTH_PAIR],
                     format_func=lambda p: growth_pair_code_label(*p),
                     key=f"growth_pairs_{dnd_key}",
                 )
@@ -1314,6 +1322,13 @@ else:
             # 自訂標題／檔名：預設關閉，勾選後可自行輸入。一旦有輸入內容，
             # 預覽標題、Excel 標題／檔名、PNG 圖片檔名都會改套用這個自訂標題，
             # 不再使用依「成分＋篩選條件」自動組出來的標題／檔名。
+            # 這個功能容易被忽略，所以加上底色的提示區塊讓使用者比較容易注意到有這個選項。
+            st.markdown(
+                "<div style='background-color:#FFF6DA;border-left:4px solid #E0A800;"
+                "padding:8px 12px;border-radius:4px;font-size:13px;color:#333333;margin-bottom:6px;'>"
+                "💡 如果想自行輸入報表標題／檔名，可以打開下方選項。</div>",
+                unsafe_allow_html=True,
+            )
             custom_title_enabled = st.checkbox(
                 "✏️ 自訂標題／檔名 (勾選後可自行輸入，將套用於預覽標題、Excel、圖片檔名)",
                 value=False, key=f"custom_title_toggle_{dnd_key}",
