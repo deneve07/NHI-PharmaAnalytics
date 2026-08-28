@@ -129,6 +129,32 @@ QTY_DISPLAY_LABEL = {
 }
 BLANK_TOKENS = {"nan", "none", "<na>", "null", ""}
 
+# 「含包裹支付醫令量」欄位：CSV 原始欄名 -> 內部工作用欄名。
+# 內部欄名刻意保留「申報量」三個字（放在「含包裹」後面），這樣既能沿用既有引擎裡
+# 「c 是否含有『申報量』字樣」這類判斷（把它當成一般數值欄一起加總/排序），
+# 又能用「含包裹」這個關鍵字把它跟一般（未含包裹）的申報量區分開來，
+# 讓占比/成長率各自獨立計算、不會互相混用分母。
+BUNDLE_QTY_COL_MAP = {
+    "2023年數量(含包裹)": "2023年含包裹申報量",
+    "2024年數量(含包裹)": "2024年含包裹申報量",
+    "2025年數量(含包裹)": "2025年含包裹申報量",
+    "2026年(1-6月)數量(含包裹)": "2026年含包裹申報量",
+}
+QTY_COL_MAP.update(BUNDLE_QTY_COL_MAP)
+QTY_DISPLAY_LABEL.update({
+    "2023年含包裹申報量": ("2023年", "數量(含包裹)"),
+    "2024年含包裹申報量": ("2024年", "數量(含包裹)"),
+    "2025年含包裹申報量": ("2025年", "數量(含包裹)"),
+    "2026年含包裹申報量": ("2026年(1-6月)", "數量(含包裹)"),
+})
+
+# 健保署官方定義，顯示在第4步供使用者參考「數量」與「數量(含包裹)」的差別。
+QTY_DEFINITION_NOTE = (
+    "ℹ️ 「醫令量」係加總醫療院所申報之計價醫令；"
+    "「含包裹支付醫令量」係加總醫療院所申報前述計價醫令，"
+    "及其他不計價醫令（如：以日劑藥費 MA1~MA4 醫令申報費用，併同申報所開立藥品代碼及其醫令量）。"
+)
+
 # 2026 年推估全年數量（以 1-5 月數據 ÷5×12 估算），以及對應的推估占比／推估成長率欄位。
 # 這三個欄位不是原始 CSV 資料，是從「2026年申報量」衍生出來的，所以獨立用常數命名，
 # 不放進 QTY_COL_MAP（那是給「讀取 CSV 原始欄位」用的），避免使用者在第4步選數值欄位時誤選到它。
@@ -142,6 +168,119 @@ EST_GROWTH_PAIR = ("2025", "2026推估")
 # 讓「2026年推估數量」可以跟其他年度數量一樣，直接出現在第4步的「選擇要加總的數值欄位」
 # 選單裡（預設勾選），不用再另外一個獨立的勾選框
 QTY_DISPLAY_LABEL[EST_QTY_COL] = ("2026年推估", "數量")
+
+# 「2026年含包裹推估數量」：同樣以 1-6 月「含包裹」數量 ÷6×12 估算，是 EST_QTY_COL 的「含包裹」版本，
+# 邏輯與命名方式完全比照上面的一般推估數量，只是全部多套一層「含包裹」。
+EST_BUNDLE_QTY_COL = "2026年含包裹推估申報量"
+EST_BUNDLE_PCT_COL = "2026含包裹推估占比(%)"
+EST_BUNDLE_GROWTH_COL = "2025-2026含包裹推估成長率(%)"
+EST_BUNDLE_PCT_YEAR = "2026含包裹推估"
+# 成長率的起點也要標成「含包裹」，確保「含包裹推估成長率」永遠是「含包裹2025 → 含包裹2026推估」
+# 這種同類型的比較，不會出現「不含包裹2025 → 含包裹2026推估」這種跨類型、容易誤導的組合。
+EST_BUNDLE_GROWTH_PAIR = ("2025含包裹", "2026含包裹推估")
+QTY_DISPLAY_LABEL[EST_BUNDLE_QTY_COL] = ("2026年推估", "數量(含包裹)")
+
+# 年度占比／年度成長率的「年度代碼」：真實年度一律用純西元年字串（例如 "2023"）代表醫令量，
+# 加上「含包裹」三個字代表含包裹醫令量（例如 "2023含包裹"）；「2026推估」「2026含包裹推估」則是
+# 兩個推估用的特殊代碼常數（就是上面的 EST_PCT_YEAR / EST_BUNDLE_PCT_YEAR）。
+# 這一組代碼統一給「加入年度占比」「加入年度成長率」的合併選單使用，讓使用者能在同一個下拉選單
+# 裡看到「2025」「2025含包裹」「2026推估」「2026含包裹推估」等選項，不用分開兩組選單選。
+QTY_YEARS = ["2023", "2024", "2025", "2026"]
+BUNDLE_SUFFIX = "含包裹"
+
+
+def is_bundle_code(code: str) -> bool:
+    return code in (EST_BUNDLE_PCT_YEAR,) or (code not in (EST_PCT_YEAR,) and code.endswith(BUNDLE_SUFFIX))
+
+
+def code_to_qty_col(code: str) -> str:
+    """把年度代碼（例如 "2025"、"2025含包裹"、"2026推估"、"2026含包裹推估"）轉成對應的內部數量欄名。"""
+    if code == EST_PCT_YEAR:
+        return EST_QTY_COL
+    if code == EST_BUNDLE_PCT_YEAR:
+        return EST_BUNDLE_QTY_COL
+    if code.endswith(BUNDLE_SUFFIX):
+        y = code[: -len(BUNDLE_SUFFIX)]
+        return f"{y}年含包裹申報量"
+    return f"{code}年申報量"
+
+
+def code_to_pct_col(code: str) -> str:
+    """把年度代碼轉成對應的占比欄名。"""
+    if code == EST_PCT_YEAR:
+        return EST_PCT_COL
+    if code == EST_BUNDLE_PCT_YEAR:
+        return EST_BUNDLE_PCT_COL
+    if code.endswith(BUNDLE_SUFFIX):
+        y = code[: -len(BUNDLE_SUFFIX)]
+        return f"{y}年含包裹占比(%)"
+    return f"{code}年占比(%)"
+
+
+def codes_to_growth_col(y1_code: str, y2_code: str) -> str:
+    """把一組年度代碼區間 (y1, y2) 轉成對應的成長率欄名。y1、y2 一定同屬「醫令量」或「含包裹醫令量」。"""
+    if y2_code == EST_PCT_YEAR:
+        return EST_GROWTH_COL
+    if y2_code == EST_BUNDLE_PCT_YEAR:
+        return EST_BUNDLE_GROWTH_COL
+    is_pkg = y1_code.endswith(BUNDLE_SUFFIX)
+    yy1 = y1_code[: -len(BUNDLE_SUFFIX)] if is_pkg else y1_code
+    yy2 = y2_code[: -len(BUNDLE_SUFFIX)] if is_pkg else y2_code
+    return f"{yy1}-{yy2}年含包裹成長率(%)" if is_pkg else f"{yy1}-{yy2}年成長率(%)"
+
+
+# 合併後的「加入年度占比」選單選項：依序放「2023」「2023含包裹」「2024」「2024含包裹」……，
+# 最後才是兩個推估選項，跟使用者是否有把對應的數量欄位拖曳到「要加總的數值欄位」完全無關——
+# 只要選了年度，該年度（該類型）的占比／成長率就會用該年度（該類型）的原始資料正確算出來，
+# 不會因為使用者沒有另外勾選顯示那一欄數量，就讓分母抓不到資料而變成 0。
+PCT_YEAR_CODE_OPTIONS = []
+for _y in QTY_YEARS:
+    PCT_YEAR_CODE_OPTIONS.append(_y)
+    PCT_YEAR_CODE_OPTIONS.append(_y + BUNDLE_SUFFIX)
+PCT_YEAR_CODE_OPTIONS += [EST_PCT_YEAR, EST_BUNDLE_PCT_YEAR]
+
+# 合併後的「加入年度成長率」選單選項：只有「醫令量→醫令量」或「含包裹醫令量→含包裹醫令量」
+# 這種同類型的年度區間，不會出現「醫令量→含包裹醫令量」這種跨類型比較（會誤導使用者）。
+# 2026 年只有 1-6 月的資料，實際成長率不提供「XX年→2026年(1-6月)」這種全年比半年的組合，
+# 只保留「XX年→2026年推估」／「XX含包裹→2026含包裹推估」。
+GROWTH_PAIR_CODE_OPTIONS = (
+    [(QTY_YEARS[i], QTY_YEARS[i + 1]) for i in range(len(QTY_YEARS) - 1) if QTY_YEARS[i + 1] != "2026"]
+    + [EST_GROWTH_PAIR]
+    + [
+        (QTY_YEARS[i] + BUNDLE_SUFFIX, QTY_YEARS[i + 1] + BUNDLE_SUFFIX)
+        for i in range(len(QTY_YEARS) - 1) if QTY_YEARS[i + 1] != "2026"
+    ]
+    + [EST_BUNDLE_GROWTH_PAIR]
+)
+
+
+def pct_year_code_label(code: str) -> str:
+    """年度占比選單的顯示文字，例如 "2025" -> "2025年"、"2025含包裹" -> "2025年含包裹"、
+    "2026" -> "2026年(1-6月)"（只有半年資料，特別標示避免誤認為全年占比）。"""
+    if code == EST_PCT_YEAR:
+        return "2026年推估"
+    if code == EST_BUNDLE_PCT_YEAR:
+        return "2026年含包裹推估"
+    if code.endswith(BUNDLE_SUFFIX):
+        y = code[: -len(BUNDLE_SUFFIX)]
+        return f"{y}年(1-6月)含包裹" if y == "2026" else f"{y}年含包裹"
+    return f"{code}年(1-6月)" if code == "2026" else f"{code}年"
+
+
+def growth_pair_code_label(y1_code: str, y2_code: str) -> str:
+    """年度成長率選單的顯示文字，例如 ("2023","2024") -> "2023年 → 2024年"、
+    ("2025含包裹","2026含包裹推估") -> "2025年含包裹 → 2026年含包裹推估"。"""
+    def fmt(code):
+        if code == EST_PCT_YEAR:
+            return "2026年推估"
+        if code == EST_BUNDLE_PCT_YEAR:
+            return "2026年含包裹推估"
+        if code.endswith(BUNDLE_SUFFIX):
+            y = code[: -len(BUNDLE_SUFFIX)]
+            return f"{y}年(1-6月)含包裹" if y == "2026" else f"{y}年含包裹"
+        return f"{code}年(1-6月)" if code == "2026" else f"{code}年"
+
+    return f"{fmt(y1_code)} → {fmt(y2_code)}"
 
 
 @st.cache_data(show_spinner=False)
@@ -183,6 +322,7 @@ def load_data(path: str) -> pd.DataFrame:
     # 之後不管怎麼篩選/分組加總，用一般的加總邏輯就能得到正確的推估總量
     # （因為「先加總再乘」跟「先乘再加總」對於固定倍率而言結果相同）。
     df[EST_QTY_COL] = df["2026年申報量"] * 12 / 6
+    df[EST_BUNDLE_QTY_COL] = df["2026年含包裹申報量"] * 12 / 6
 
     return df
 
@@ -204,6 +344,8 @@ def pretty_header(col: str):
     2026年(1-6月)的數量/占比改成三行顯示；占比/成長率欄位的年份／年度區間都保留「年」字。"""
     if col == "2026年申報量":
         return ["2026年", "(1-6月)", "數量"]
+    if col == "2026年含包裹申報量":
+        return ["2026年", "(1-6月)", "數量(含包裹)"]
     if col == EST_QTY_COL:
         return ["2026年", "推估數量"]
     if col in QTY_DISPLAY_LABEL:
@@ -211,8 +353,16 @@ def pretty_header(col: str):
 
     if col == "2026年占比(%)":
         return ["2026年", "(1-6月)", "占比(%)"]
+    if col == "2026年含包裹占比(%)":
+        return ["2026年(含包裹)", "(1-6月)", "占比(%)"]
     if col == EST_PCT_COL:
         return ["2026年", "推估占比(%)"]
+    if col == EST_BUNDLE_PCT_COL:
+        return ["2026年(含包裹)", "推估占比(%)"]
+    m = re.match(r"^(\d{4})年含包裹占比\(%\)$", col)
+    if m:
+        y = m.group(1)
+        return [f"{y}年(含包裹)", "占比(%)"]
     m = re.match(r"^(\d{4})年占比\(%\)$", col)
     if m:
         y = m.group(1)
@@ -220,6 +370,14 @@ def pretty_header(col: str):
 
     if col == EST_GROWTH_COL:
         return ["2025-2026年", "推估成長率(%)"]
+    if col == EST_BUNDLE_GROWTH_COL:
+        return ["2025-2026年(含包裹)", "推估成長率(%)"]
+    m = re.match(r"^(\d{4})-(\d{4})年含包裹成長率\(%\)$", col)
+    if m:
+        y1, y2 = m.group(1), m.group(2)
+        y1d = f"{y1}(1-6月)" if y1 == "2026" else y1
+        y2d = f"{y2}(1-6月)" if y2 == "2026" else y2
+        return [f"{y1d}-{y2d}年(含包裹)", "成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
@@ -237,71 +395,58 @@ def pretty_header(col: str):
 # ============================================================
 
 def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list, value_cols: list,
-                       pct_years: list = None, growth_pairs: list = None):
-    pct_years = pct_years or []
-    growth_pairs = growth_pairs or []  # 使用者勾選的年度成長率區間，例如 [("2023","2024"), ("2025","2026")]
+                       pct_year_codes: list = None, growth_pair_codes: list = None):
+    pct_year_codes = pct_year_codes or []  # 合併後的年度占比代碼，例如 ["2025", "2025含包裹", "2026推估"]
+    growth_pair_codes = growth_pair_codes or []  # 合併後的成長率年度區間代碼，例如 [("2023","2024"), ("2025含包裹","2026含包裹推估")]
 
-    # value_cols 是使用者勾選「要顯示成欄位」的數量欄。EST_QTY_COL（2026年推估數量）是否顯示，
-    # 跟「2026推估占比」「2025-2026推估成長率」是否被勾選這兩件事完全獨立、互不綁定：
-    # 就算使用者沒有勾選顯示 2026年推估數量，只要占比/成長率選單裡有選推估項目，
-    # 這裡還是要把 EST_QTY_COL 一起加總進來才能算出正確的推估占比／推估成長率。
+    # value_cols 是使用者勾選「要顯示成欄位」的數量欄。占比／成長率所需要的分母／分子欄位，
+    # 不管使用者有沒有勾選要「顯示」該欄數量，只要選了對應的年度占比／成長率，就要一併算進來
+    # （這樣才不會發生「使用者只顯示了2026年含包裹數量，卻要看2025含包裹占比」時，
+    #  因為2025年含包裹申報量沒被加總、分母變成0，導致占比/成長率被誤算成0%的情況）。
     display_value_cols = list(value_cols)
-    needs_est_calc = (EST_PCT_YEAR in pct_years) or (EST_GROWTH_PAIR in growth_pairs)
     calc_cols = list(display_value_cols)
-    if needs_est_calc and EST_QTY_COL not in calc_cols:
-        calc_cols = calc_cols + [EST_QTY_COL]
+
+    def _ensure_calc_col(c):
+        if c not in calc_cols:
+            calc_cols.append(c)
+
+    for code in pct_year_codes:
+        _ensure_calc_col(code_to_qty_col(code))
+    for (y1_code, y2_code) in growth_pair_codes:
+        _ensure_calc_col(code_to_qty_col(y1_code))
+        _ensure_calc_col(code_to_qty_col(y2_code))
 
     # 先依「報表欄位」的組合彙總數值，確保同一個欄位組合只會出現一列
     df = df.groupby(row_fields, as_index=False)[calc_cols].sum()
 
-    # 「2026年推估數量」欄名開頭剛好也是「2026」，但它是獨立的衍生欄位，不能被當成
-    # 「使用者選了真正的2026年(1-6月)數量」來處理年度占比/成長率的自動判斷，
-    # 所以這裡的年度偵測要排除它，只用真正的申報量欄位來決定有哪些「年度」可用。
-    qty_cols = [c for c in display_value_cols if "申報量" in c and c != EST_QTY_COL]
-    qty_years = sorted(set(c[:4] for c in qty_cols))
+    # 依序把使用者選的年度占比／成長率代碼轉成實際的欄名，並各自記錄「要拿哪個數量欄當分母／分子」，
+    # 之後計算階段直接查表，不必再從欄名字串反推年度／醫令量或含包裹醫令量。
+    pct_cols, pct_base_map = [], {}
+    for code in pct_year_codes:
+        col_name = code_to_pct_col(code)
+        pct_cols.append(col_name)
+        pct_base_map[col_name] = code_to_qty_col(code)
 
-    pct_cols = [f"{y}年占比(%)" for y in qty_years if y in pct_years]
-    all_growth_pairs = [(qty_years[i], qty_years[i + 1]) for i in range(len(qty_years) - 1)]
-    growth_cols = [f"{y1}-{y2}年成長率(%)" for (y1, y2) in all_growth_pairs if (y1, y2) in set(growth_pairs)]
-
-    # 推估占比／推估成長率完全獨立：使用者只要在「年度占比」「年度成長率」選單裡勾選了對應的
-    # 推估項目，不論有沒有另外勾選「加入2026年推估數量」這個顯示欄位，都能算出來
-    if EST_PCT_YEAR in pct_years:
-        pct_cols = pct_cols + [EST_PCT_COL]
-    if EST_GROWTH_PAIR in growth_pairs:
-        growth_cols = growth_cols + [EST_GROWTH_COL]
+    growth_cols, growth_base_map = [], {}
+    for (y1_code, y2_code) in growth_pair_codes:
+        col_name = codes_to_growth_col(y1_code, y2_code)
+        growth_cols.append(col_name)
+        growth_base_map[col_name] = (code_to_qty_col(y1_code), code_to_qty_col(y2_code))
 
     def compute_extra_for_row(sums, top_totals):
         extra = {}
         for c in pct_cols:
-            if c == EST_PCT_COL:
-                # 推估占比：直接用「推估數量」自己的加總來算比例，不依賴使用者是否也選了「2026年(1-6月)數量」
-                extra[c] = sums.get(EST_QTY_COL, 0) / top_totals.get(EST_QTY_COL, 0) if top_totals.get(EST_QTY_COL, 0) else 0
-                continue
-            y = c[:4]
-            base = f"{y}年申報量"
+            base = pct_base_map[c]
             extra[c] = sums.get(base, 0) / top_totals.get(base, 0) if top_totals.get(base, 0) else 0
         for c in growth_cols:
-            if c == EST_GROWTH_COL:
-                base_2025 = sums.get("2025年申報量", 0)
-                est_val = sums.get(EST_QTY_COL, 0)
-                extra[c] = (est_val - base_2025) / base_2025 if base_2025 else 0
-                continue
-            y1, y2 = c[:4], c[5:9]
-            b1, b2 = f"{y1}年申報量", f"{y2}年申報量"
+            b1, b2 = growth_base_map[c]
             extra[c] = (sums.get(b2, 0) - sums.get(b1, 0)) / sums.get(b1, 0) if sums.get(b1, 0) else 0
         return extra
 
     def compute_extra_for_group(totals):
         extra = {c: 1.0 for c in pct_cols}  # 小計/總計列本身佔比恆為 100%
         for c in growth_cols:
-            if c == EST_GROWTH_COL:
-                base_2025 = totals.get("2025年申報量", 0)
-                est_val = totals.get(EST_QTY_COL, 0)
-                extra[c] = (est_val - base_2025) / base_2025 if base_2025 else 0
-                continue
-            y1, y2 = c[:4], c[5:9]
-            b1, b2 = f"{y1}年申報量", f"{y2}年申報量"
+            b1, b2 = growth_base_map[c]
             extra[c] = (totals.get(b2, 0) - totals.get(b1, 0)) / totals.get(b1, 0) if totals.get(b1, 0) else 0
         return extra
 
@@ -1028,6 +1173,7 @@ else:
             st.caption(f"篩選後共 **{len(df_filtered):,}** 筆資料")
 
             st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2023~2025年 + 2026年推估 數量)")
+            st.caption(QTY_DEFINITION_NOTE)
 
             # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-6月) 數量」），
             # 而不是內部使用的原始欄名（例如「2026年申報量」），避免使用者選欄位時對不上結果
@@ -1035,14 +1181,16 @@ else:
                 year, label = QTY_DISPLAY_LABEL.get(internal_col, (None, internal_col))
                 return f"{year} {label}" if year else label
 
-            qty_options = list(QTY_COL_MAP.values()) + [EST_QTY_COL]
+            qty_options = list(QTY_COL_MAP.values()) + [EST_QTY_COL, EST_BUNDLE_QTY_COL]
             qty_label_map = {c: qty_display_label(c) for c in qty_options}
             qty_label_to_internal = {v: k for k, v in qty_label_map.items()}
 
             # 跟第2步的拖曳介面呈現方式一致：未選用的欄位放在上方「可用欄位」，
             # 已選用、會加總／顯示的欄位放在下方，且可拖曳調整加總／顯示順序。
             # 預設把「2026年(1-6月)數量」排除在外（放進「可用欄位」），其餘（2023~2025年 + 2026年推估）預設選用。
-            DEFAULT_EXCLUDED_QTY = ["2026年申報量"]
+            # 「含包裹」數量欄位是新增的選用指標，預設一律排除（放進「可用欄位」），
+            # 不影響既有報表預設樣貌；使用者需要時自行拖曳加入。
+            DEFAULT_EXCLUDED_QTY = ["2026年申報量"] + list(BUNDLE_QTY_COL_MAP.values()) + [EST_BUNDLE_QTY_COL]
             qty_state_key = f"qty_state_{dnd_key}"
             if qty_state_key not in st.session_state:
                 default_selected = [c for c in qty_options if c not in DEFAULT_EXCLUDED_QTY]
@@ -1101,62 +1249,32 @@ else:
             if not value_cols:
                 st.info("請至少選擇一個要加總的數值欄位。")
 
-            # 以下三個「2026推估」相關項目彼此完全獨立、互不綁定，可以各自單獨勾選／不選：
-            #   1) 2026年推估數量 —— 現在跟其他年度數量一樣，直接是上面「選擇要加總的數值欄位」
-            #      選單裡的一個選項（預設勾選），不再用獨立的勾選框
-            #   2) 加入年度占比 → 2026推估 (占比選單裡的一個選項)
-            #   3) 加入年度成長率 → 2025→2026年推估 (成長率選單裡的一個選項)
-            # 「2026年推估數量」不算實際年度資料，這裡的年度偵測要排除它，
-            # 避免使用者選了推估數量後，誤以為可以選「2026年」的實際占比／成長率
-            qty_years_avail = sorted(set(c[:4] for c in value_cols if "申報量" in c and c != EST_QTY_COL))
-            has_qty = len(qty_years_avail) > 0
+            # 年度占比／年度成長率選單完全獨立於上方「要加總的數值欄位」：不論使用者有沒有勾選要
+            # 「顯示」某年度（或某年度含包裹）的數量欄位，只要在下面選了該年度，就會用該年度
+            # （該類型）的原始資料正確算出占比／成長率，不會發生分母抓不到資料而變成 0% 的情況。
+            has_qty = True  # 年度選項固定為 2023~2026，恆為可選；停用邏輯改成看有無勾選成長率本身即可
 
-            # 2) 占比選單：「2026推估」永遠是選單裡的一個選項，跟是否選了「2026年推估數量」欄位無關，
-            # 預設連同 2025、2026 一起勾起來（所以預設會有 3 個占比欄位）
-            # 「2026」占比其實只有1-6月的資料，顯示文字要特別標示，避免使用者誤以為是全年占比
-            def pct_year_label(y):
-                if y == EST_PCT_YEAR:
-                    return "2026推估"
-                if y == "2026":
-                    return "2026(1-6月)"
-                return y
-
-            pct_options = list(qty_years_avail) + [EST_PCT_YEAR]
-            default_pct_years = [y for y in ["2025", "2026"] if y in qty_years_avail] + [EST_PCT_YEAR]
             pct_years = st.multiselect(
-                "➕ 加入年度占比(%) (可只選需要的年份)",
-                options=pct_options, default=default_pct_years, disabled=not has_qty, key=f"pct_{dnd_key}",
-                format_func=pct_year_label,
+                "➕ 加入年度占比(%) (可只選需要的年份；含包裹／不含包裹分開列，可各自單選或都選)",
+                options=PCT_YEAR_CODE_OPTIONS,
+                default=[y for y in ["2025", "2026"] if y in QTY_YEARS] + [EST_PCT_YEAR],
+                key=f"pct_{dnd_key}",
+                format_func=pct_year_code_label,
             )
-            add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, disabled=not has_qty, key=f"growth_{dnd_key}")
+            add_growth = st.checkbox("➕ 加入年度成長率(%)", value=False, key=f"growth_{dnd_key}")
 
-            def growth_pair_label(y1, y2):
-                # 2026 年只有 1-5 月的資料，標籤要特別標示，避免使用者誤以為是全年成長率
-                if y2 == "2026推估":
-                    y1d = f"{y1}年(1-6月)" if y1 == "2026" else f"{y1}年"
-                    return f"{y1d} → 2026年推估"
-                y1d = f"{y1}年(1-6月)" if y1 == "2026" else f"{y1}年"
-                y2d = f"{y2}年(1-6月)" if y2 == "2026" else f"{y2}年"
-                return f"{y1d} → {y2d}"
-
-            # 3) 「2025年→2026年(1-6月)」這組實際成長率會拿全年資料跟只有1-6月的資料相比，
-            # 容易誤導，所以不提供這個選項；「2025→2026年推估」則永遠是選單裡的一個選項，
-            # 跟是否勾選「加入2026年推估數量」無關
-            growth_pair_options = [
-                (y1, y2) for y1, y2 in zip(qty_years_avail, qty_years_avail[1:]) if y2 != "2026"
-            ] + [EST_GROWTH_PAIR]
+            # 成長率只提供「醫令量→醫令量」或「含包裹醫令量→含包裹醫令量」這種同類型的年度區間，
+            # 不會出現「醫令量→含包裹醫令量」這種跨類型比較（詳見 GROWTH_PAIR_CODE_OPTIONS 的定義）。
             growth_pairs = []
             if add_growth:
-                if growth_pair_options:
-                    growth_pairs = st.multiselect(
-                        "選擇要顯示的成長率年度區間 (可複選，預設全選)",
-                        options=growth_pair_options,
-                        default=growth_pair_options,
-                        format_func=lambda p: growth_pair_label(*p),
-                        key=f"growth_pairs_{dnd_key}",
-                    )
-                else:
-                    st.caption("⚠️ 目前選擇的數值欄位不足兩個年度，無法計算成長率。")
+                growth_pairs = st.multiselect(
+                    "選擇要顯示的成長率年度區間 (可複選，預設全選；僅提供同類型「醫令量↔醫令量」"
+                    "或「含包裹↔含包裹」的區間，不提供跨類型比較)",
+                    options=GROWTH_PAIR_CODE_OPTIONS,
+                    default=GROWTH_PAIR_CODE_OPTIONS,
+                    format_func=lambda p: growth_pair_code_label(*p),
+                    key=f"growth_pairs_{dnd_key}",
+                )
 
             # 標題與檔名都要反映「篩選了哪些欄位」：成分一定顯示；其餘欄位（劑型/劑量/規格/廠商）
             # 只有在使用者有實際篩選時才附加上去，沒特別篩選的欄位就不出現在標題/檔名裡
