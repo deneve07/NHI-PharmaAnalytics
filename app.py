@@ -113,6 +113,12 @@ EXTRA_FIELD_SOURCE_MAP = {
 LINK_FIELD = "許可證連結"
 LINK_DISPLAY_TEXT = "連結"
 
+# 這五個欄位是「每一列各自對應的顯示用資訊」（健保代碼/商品名/健保價/ATC碼/許可證連結），
+# 不是像成分/劑型/劑量/規格/廠商那樣代表資料的分組層級，所以即使剛好跟上一列的值相同
+# （例如兩家不同廠商的支付價剛好都是 6.7，或都是「-」），也必須照實顯示，
+# 不能被 build_nested_rows() 裡「省略重複值」的大綱模式邏輯誤判成同一群組而被留白。
+EXTRA_DISPLAY_FIELDS = set(EXTRA_FIELD_SOURCE_MAP.keys())
+
 # 原始資料的四個年度數量欄 -> 內部工作用欄名（沿用「申報量」關鍵字，讓占比/成長率引擎能自動辨識）
 QTY_COL_MAP = {
     "2023年數量": "2023年申報量",
@@ -309,6 +315,19 @@ def load_data(path: str) -> pd.DataFrame:
             # 移除劑量字串內所有空白（含中間空格），避免 "250mg" 與 "250 mg" 被當成不同劑量
             cleaned = cleaned.str.replace(r"\s+", "", regex=True)
         cleaned = cleaned.apply(lambda x: "" if str(x).lower() in BLANK_TOKENS else x)
+        if col == "健保價":
+            # CSV 讀進來的支付價是數字欄位，astype(str) 會把整數價格變成「6.0」「0.0」這種
+            # 多一個「.0」尾巴的字串；這裡把「剛好是整數」的價格去掉多餘的「.0」（例如 0.0 → 0），
+            # 有小數的價格（例如 6.7、6.75）維持原樣不動。
+            def _format_price(x):
+                if x == "":
+                    return x
+                try:
+                    v = float(x)
+                except ValueError:
+                    return x
+                return str(int(v)) if v == int(v) else x
+            cleaned = cleaned.apply(_format_price)
         df[col] = cleaned
 
     # 四個年度數量欄：清除千分位逗號/空白後轉數字，轉出內部工作欄名
@@ -503,13 +522,18 @@ def build_nested_rows(df: pd.DataFrame, row_fields: list, subtotal_fields: list,
                     prefix_broken = True  # 新的合計群組開始，之後的欄位一律照常顯示
                 else:
                     show = ""
+                last_vals[f] = val
+            elif f in EXTRA_DISPLAY_FIELDS:
+                # 健保代碼/商品名/健保價/ATC碼/許可證連結：每一列各自的顯示資訊，不是分組欄位，
+                # 一律照實顯示，不參與「省略重複值」的比對，也不影響後面欄位（例如廠商）的分組判斷
+                show = val
             else:
                 if (not prefix_broken) and val == last_vals.get(f, _MISSING):
                     show = ""
                 else:
                     show = val
                     prefix_broken = True
-            last_vals[f] = val
+                last_vals[f] = val
             rec_vals[f] = show
         # calc_sums 用來算占比/成長率（含隱藏未顯示的 EST_QTY_COL），
         # 但實際要顯示出來的欄位只有 display_value_cols（使用者真正勾選要顯示的數量欄）
