@@ -974,7 +974,9 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
         elif col_idx <= len(row_fields):
             ws.column_dimensions[col_letter].width = 18
         elif col_key in growth_cols:
-            ws.column_dimensions[col_letter].width = 16
+            # 「含包裹」成長率欄位標題較長（三行：年度區間／(含包裹)／推估成長率(%)），
+            # 需要比一般成長率欄位更寬，否則欄寬不夠、文字會被截斷（如截圖所示「率」被切掉）
+            ws.column_dimensions[col_letter].width = 22 if "含包裹" in col_key else 16
         elif col_key in pct_cols:
             # 寬度需容得下最長的占比標題「2026年推估占比(%)」拆成兩行，
             # 原本 14 太窄會被 Excel 自動換成三行（"2026年"/"推估"/"占比(%)"），改成 18 才夠兩行顯示
@@ -993,7 +995,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 # ============================================================
 
 st.title("📊 健保資料庫分析工具")
-st.caption("申報量已更新至2026年6月。")
+st.caption("申報量已更新至2026年6月，支付價已更新至8/27最新檔案。")
 
 df_raw = load_data(DATA_FILE)
 
@@ -1177,7 +1179,7 @@ else:
 
             st.caption(f"篩選後共 **{len(df_filtered):,}** 筆資料")
 
-            st.markdown("### 🧮 第4步：選擇要加總的數值欄位 (預設帶入 2024~2026年推估 含包裹數量)")
+            st.markdown("### 🧮 第4步：選擇要加總的數值欄位")
             st.markdown(
                 f"<div style='background-color:#EAF1FB;border-left:4px solid #1F497D;"
                 f"padding:8px 12px;border-radius:4px;font-size:13px;color:#333333;'>{QTY_DEFINITION_NOTE}</div>",
@@ -1263,7 +1265,7 @@ else:
             has_qty = True  # 年度選項固定為 2023~2026，恆為可選；停用邏輯改成看有無勾選成長率本身即可
 
             pct_years = st.multiselect(
-                "➕ 加入年度占比(%) (可只選需要的年份；含包裹／不含包裹分開列，可各自單選或都選)",
+                "➕ 加入年度占比(%) (可只選需要的年份)",
                 options=PCT_YEAR_CODE_OPTIONS,
                 default=["2025含包裹", EST_BUNDLE_PCT_YEAR],
                 key=f"pct_{dnd_key}",
@@ -1276,8 +1278,7 @@ else:
             growth_pairs = []
             if add_growth:
                 growth_pairs = st.multiselect(
-                    "選擇要顯示的成長率年度區間 (可複選；僅提供同類型「醫令量↔醫令量」"
-                    "或「含包裹↔含包裹」的區間，不提供跨類型比較)",
+                    "選擇要顯示的成長率年度區間 (可複選)",
                     options=GROWTH_PAIR_CODE_OPTIONS,
                     default=[EST_BUNDLE_GROWTH_PAIR],
                     format_func=lambda p: growth_pair_code_label(*p),
