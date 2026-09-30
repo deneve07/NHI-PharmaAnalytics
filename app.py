@@ -127,14 +127,14 @@ QTY_COL_MAP = {
     "2023年數量": "2023年申報量",
     "2024年數量": "2024年申報量",
     "2025年數量": "2025年申報量",
-    "2026年(1-6月)數量": "2026年申報量",
+    "2026年(1-7月)數量": "2026年申報量",
 }
-# 內部工作用欄名 -> 顯示用 (年份標籤, 欄位標籤)，2026 特別標示 (1-6月)
+# 內部工作用欄名 -> 顯示用 (年份標籤, 欄位標籤)，2026 特別標示 (1-7月)
 QTY_DISPLAY_LABEL = {
     "2023年申報量": ("2023年", "數量"),
     "2024年申報量": ("2024年", "數量"),
     "2025年申報量": ("2025年", "數量"),
-    "2026年申報量": ("2026年(1-6月)", "數量"),
+    "2026年申報量": ("2026年(1-7月)", "數量"),
 }
 BLANK_TOKENS = {"nan", "none", "<na>", "null", ""}
 
@@ -147,14 +147,14 @@ BUNDLE_QTY_COL_MAP = {
     "2023年數量(含包裹)": "2023年含包裹申報量",
     "2024年數量(含包裹)": "2024年含包裹申報量",
     "2025年數量(含包裹)": "2025年含包裹申報量",
-    "2026年(1-6月)數量(含包裹)": "2026年含包裹申報量",
+    "2026年(1-7月)數量(含包裹)": "2026年含包裹申報量",
 }
 QTY_COL_MAP.update(BUNDLE_QTY_COL_MAP)
 QTY_DISPLAY_LABEL.update({
     "2023年含包裹申報量": ("2023年", "數量(含包裹)"),
     "2024年含包裹申報量": ("2024年", "數量(含包裹)"),
     "2025年含包裹申報量": ("2025年", "數量(含包裹)"),
-    "2026年含包裹申報量": ("2026年(1-6月)", "數量(含包裹)"),
+    "2026年含包裹申報量": ("2026年(1-7月)", "數量(含包裹)"),
 })
 
 # 健保署官方定義，顯示在第4步供使用者參考「數量」與「數量(含包裹)」的差別。
@@ -250,7 +250,7 @@ PCT_YEAR_CODE_OPTIONS += [EST_PCT_YEAR, EST_BUNDLE_PCT_YEAR]
 
 # 合併後的「加入年度成長率」選單選項：只有「醫令量→醫令量」或「含包裹醫令量→含包裹醫令量」
 # 這種同類型的年度區間，不會出現「醫令量→含包裹醫令量」這種跨類型比較（會誤導使用者）。
-# 2026 年只有 1-6 月的資料，實際成長率不提供「XX年→2026年(1-6月)」這種全年比半年的組合，
+# 2026 年只有 1-6 月的資料，實際成長率不提供「XX年→2026年(1-7月)」這種全年比半年的組合，
 # 只保留「XX年→2026年推估」／「XX含包裹→2026含包裹推估」。
 GROWTH_PAIR_CODE_OPTIONS = (
     [(QTY_YEARS[i], QTY_YEARS[i + 1]) for i in range(len(QTY_YEARS) - 1) if QTY_YEARS[i + 1] != "2026"]
@@ -265,15 +265,15 @@ GROWTH_PAIR_CODE_OPTIONS = (
 
 def pct_year_code_label(code: str) -> str:
     """年度占比選單的顯示文字，例如 "2025" -> "2025年"、"2025含包裹" -> "2025年含包裹"、
-    "2026" -> "2026年(1-6月)"（只有半年資料，特別標示避免誤認為全年占比）。"""
+    "2026" -> "2026年(1-7月)"（只有半年資料，特別標示避免誤認為全年占比）。"""
     if code == EST_PCT_YEAR:
         return "2026年推估"
     if code == EST_BUNDLE_PCT_YEAR:
         return "2026年含包裹推估"
     if code.endswith(BUNDLE_SUFFIX):
         y = code[: -len(BUNDLE_SUFFIX)]
-        return f"{y}年(1-6月)含包裹" if y == "2026" else f"{y}年含包裹"
-    return f"{code}年(1-6月)" if code == "2026" else f"{code}年"
+        return f"{y}年(1-7月)含包裹" if y == "2026" else f"{y}年含包裹"
+    return f"{code}年(1-7月)" if code == "2026" else f"{code}年"
 
 
 def growth_pair_code_label(y1_code: str, y2_code: str) -> str:
@@ -286,8 +286,8 @@ def growth_pair_code_label(y1_code: str, y2_code: str) -> str:
             return "2026年含包裹推估"
         if code.endswith(BUNDLE_SUFFIX):
             y = code[: -len(BUNDLE_SUFFIX)]
-            return f"{y}年(1-6月)含包裹" if y == "2026" else f"{y}年含包裹"
-        return f"{code}年(1-6月)" if code == "2026" else f"{code}年"
+            return f"{y}年(1-7月)含包裹" if y == "2026" else f"{y}年含包裹"
+        return f"{code}年(1-7月)" if code == "2026" else f"{code}年"
 
     return f"{fmt(y1_code)} → {fmt(y2_code)}"
 
@@ -340,11 +340,11 @@ def load_data(path: str) -> pd.DataFrame:
         cleaned = df[raw_col].astype(str).str.replace(",", "", regex=False).str.strip()
         df[internal_col] = pd.to_numeric(cleaned, errors="coerce").fillna(0)
 
-    # 2026 年推估全年數量：用 1-5 月數量 ÷5×12 估算。先在這裡逐列算好，
+    # 2026 年推估全年數量：用 1-7 月數量 ÷7×12 估算。先在這裡逐列算好，
     # 之後不管怎麼篩選/分組加總，用一般的加總邏輯就能得到正確的推估總量
     # （因為「先加總再乘」跟「先乘再加總」對於固定倍率而言結果相同）。
-    df[EST_QTY_COL] = df["2026年申報量"] * 12 / 6
-    df[EST_BUNDLE_QTY_COL] = df["2026年含包裹申報量"] * 12 / 6
+    df[EST_QTY_COL] = df["2026年申報量"] * 12 / 7
+    df[EST_BUNDLE_QTY_COL] = df["2026年含包裹申報量"] * 12 / 7
 
     return df
 
@@ -363,20 +363,20 @@ def order_display_cols(value_cols, pct_cols, growth_cols):
 
 def pretty_header(col: str):
     """把內部欄名轉成「多行標題」的字串清單（2或3行），呼叫端自行用 <br>（HTML）或 \\n（Excel）組合。
-    2026年(1-6月)的數量/占比改成三行顯示；占比/成長率欄位的年份／年度區間都保留「年」字。"""
+    2026年(1-7月)的數量/占比改成三行顯示；占比/成長率欄位的年份／年度區間都保留「年」字。"""
     if col == "2026年申報量":
-        return ["2026年", "(1-6月)", "數量"]
+        return ["2026年", "(1-7月)", "數量"]
     if col == "2026年含包裹申報量":
-        return ["2026年", "(1-6月)", "數量(含包裹)"]
+        return ["2026年", "(1-7月)", "數量(含包裹)"]
     if col == EST_QTY_COL:
         return ["2026年", "推估數量"]
     if col in QTY_DISPLAY_LABEL:
         return list(QTY_DISPLAY_LABEL[col])
 
     if col == "2026年占比(%)":
-        return ["2026年", "(1-6月)", "占比(%)"]
+        return ["2026年", "(1-7月)", "占比(%)"]
     if col == "2026年含包裹占比(%)":
-        return ["2026年", "(含包裹)(1-6月)", "占比(%)"]
+        return ["2026年", "(含包裹)(1-7月)", "占比(%)"]
     if col == EST_PCT_COL:
         return ["2026年", "推估占比(%)"]
     if col == EST_BUNDLE_PCT_COL:
@@ -397,14 +397,14 @@ def pretty_header(col: str):
     m = re.match(r"^(\d{4})-(\d{4})年含包裹成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
-        y1d = f"{y1}(1-6月)" if y1 == "2026" else y1
-        y2d = f"{y2}(1-6月)" if y2 == "2026" else y2
+        y1d = f"{y1}(1-7月)" if y1 == "2026" else y1
+        y2d = f"{y2}(1-7月)" if y2 == "2026" else y2
         return [f"{y1d}-{y2d}年", "(含包裹)", "成長率(%)"]
     m = re.match(r"^(\d{4})-(\d{4})年成長率\(%\)$", col)
     if m:
         y1, y2 = m.group(1), m.group(2)
-        y1d = f"{y1}(1-6月)" if y1 == "2026" else y1
-        y2d = f"{y2}(1-6月)" if y2 == "2026" else y2
+        y1d = f"{y1}(1-7月)" if y1 == "2026" else y1
+        y2d = f"{y2}(1-7月)" if y2 == "2026" else y2
         return [f"{y1d}-{y2d}年", "成長率(%)"]
 
     return [col]
@@ -1213,7 +1213,7 @@ else:
                 unsafe_allow_html=True,
             )
 
-            # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-6月) 數量」），
+            # 這裡顯示的欄位名稱要跟報表結果的欄位標題一致（例如「2026年(1-7月) 數量」），
             # 而不是內部使用的原始欄名（例如「2026年申報量」），避免使用者選欄位時對不上結果
             def qty_display_label(internal_col):
                 year, label = QTY_DISPLAY_LABEL.get(internal_col, (None, internal_col))
@@ -1226,7 +1226,7 @@ else:
             # 跟第2步的拖曳介面呈現方式一致：未選用的欄位放在上方「可用欄位」，
             # 已選用、會加總／顯示的欄位放在下方，且可拖曳調整加總／顯示順序。
             # 預設帶入「2024、2025、2026年推估」三個含包裹數量欄位，其餘欄位（含一般醫令量、
-            # 2023年含包裹、2026年(1-6月)含包裹）預設放進「可用欄位」，使用者需要時自行拖曳加入。
+            # 2023年含包裹、2026年(1-7月)含包裹）預設放進「可用欄位」，使用者需要時自行拖曳加入。
             DEFAULT_SELECTED_QTY = ["2024年含包裹申報量", "2025年含包裹申報量", EST_BUNDLE_QTY_COL]
             qty_state_key = f"qty_state_{dnd_key}"
             if qty_state_key not in st.session_state:
