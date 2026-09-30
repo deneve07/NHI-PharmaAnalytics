@@ -178,7 +178,7 @@ EST_GROWTH_PAIR = ("2025", "2026推估")
 # 選單裡（預設勾選），不用再另外一個獨立的勾選框
 QTY_DISPLAY_LABEL[EST_QTY_COL] = ("2026年推估", "數量")
 
-# 「2026年含包裹推估數量」：同樣以 1-6 月「含包裹」數量 ÷6×12 估算，是 EST_QTY_COL 的「含包裹」版本，
+# 「2026年含包裹推估數量」：同樣以 1-7 月「含包裹」數量 ÷7×12 估算，是 EST_QTY_COL 的「含包裹」版本，
 # 邏輯與命名方式完全比照上面的一般推估數量，只是全部多套一層「含包裹」。
 EST_BUNDLE_QTY_COL = "2026年含包裹推估申報量"
 EST_BUNDLE_PCT_COL = "2026含包裹推估占比(%)"
@@ -1022,7 +1022,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 # ============================================================
 
 st.title("📊 健保資料庫分析工具")
-st.caption("申報量已更新至2026年6月，支付價已更新至8/27最新檔案。")
+st.caption("申報量已更新至2026年7月，支付價已更新至9/22最新檔案。")
 
 df_raw = load_data(DATA_FILE)
 
