@@ -1022,7 +1022,7 @@ def generate_excel_bytes(rows, row_fields, value_cols, pct_cols, growth_cols, re
 # ============================================================
 
 st.title("📊 健保資料庫分析工具")
-st.caption("申報量已更新至2026年7月，支付價已更新至9/22最新檔案。")
+st.caption("申報量已更新至2026年7月，支付價已更新至9/28最新檔案。")
 
 df_raw = load_data(DATA_FILE)
 
