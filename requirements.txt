@@ -1,4 +1,4 @@
-streamlit
+streamlit==1.39.0
 pandas
 openpyxl
-streamlit-sortables
+streamlit-sortables==0.3.1
